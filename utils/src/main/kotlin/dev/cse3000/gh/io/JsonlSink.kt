@@ -26,6 +26,10 @@ class JsonlSink(private val root: Path) : AutoCloseable {
         counts.merge(stream, 1) { a, b -> a + b }
     }
 
+    suspend fun flushAll() {
+        writers.values.forEach { runCatching { it.flush() } }
+    }
+
     override fun close() {
         writers.values.forEach { runCatching { it.close() } }
     }

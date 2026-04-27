@@ -3,9 +3,10 @@ package dev.cse3000.keep
 import dev.cse3000.gh.io.RunManifest
 import dev.cse3000.gh.io.RunManifestWriter
 import dev.cse3000.gh.io.ScrapeContext
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.Instant
+import kotlin.time.Duration.Companion.seconds
 
 private val log = LoggerFactory.getLogger("dev.cse3000.keep.Main")
 
@@ -15,6 +16,16 @@ fun main(args: Array<String>): Unit = runBlocking {
     val started = Instant.now().toString()
     val ctx = ScrapeContext.create()
     val errors = mutableListOf<String>()
+    val flushInterval = 60.seconds
+    val flushJob = launch {
+        while (isActive) {
+            delay(flushInterval)
+            withContext(NonCancellable) {
+                runCatching { ctx.persist() }
+                runCatching { ctx.sink.flushAll() }
+            }
+        }
+    }
     try {
         log.info("Starting {} scrape (limit={}, dataDir={})", parsed.mode, parsed.limit, ctx.dataDir)
         KeepScraper(ctx).run(incremental, parsed.limit)
@@ -24,6 +35,8 @@ fun main(args: Array<String>): Unit = runBlocking {
         log.error("Scrape failed", e)
         throw e
     } finally {
+        flushJob.cancel()
+        flushJob.join()
         val manifest = RunManifest(
             startedAt = started,
             finishedAt = Instant.now().toString(),
