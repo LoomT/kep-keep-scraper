@@ -1,0 +1,62 @@
+package dev.cse3000.kep
+
+import dev.cse3000.gh.io.RunManifest
+import dev.cse3000.gh.io.RunManifestWriter
+import dev.cse3000.gh.io.ScrapeContext
+import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
+import java.time.Instant
+
+private val log = LoggerFactory.getLogger("dev.cse3000.kep.Main")
+
+fun main(args: Array<String>): Unit = runBlocking {
+    val parsed = parseArgs(args)
+    val incremental = parsed.mode == "update"
+    val started = Instant.now().toString()
+    val ctx = ScrapeContext.create()
+    val errors = mutableListOf<String>()
+    try {
+        log.info("Starting {} scrape (limit={}, dataDir={})", parsed.mode, parsed.limit, ctx.dataDir)
+        KepScraper(ctx).run(incremental, parsed.limit)
+        ctx.persist()
+    } catch (e: Throwable) {
+        errors += "fatal: ${e::class.simpleName}: ${e.message}"
+        log.error("Scrape failed", e)
+        throw e
+    } finally {
+        val manifest = RunManifest(
+            startedAt = started,
+            finishedAt = Instant.now().toString(),
+            mode = parsed.mode,
+            repo = "kubernetes/enhancements",
+            rateLimitRemainingAtEnd = ctx.client.rateLimiter.remainingSnapshot
+                .takeIf { it != Int.MAX_VALUE },
+            requestsMade = ctx.client.requestsMade.get(),
+            requests304 = ctx.client.requests304.get(),
+            counts = ctx.sink.counts.toMap(),
+            errors = errors,
+        )
+        val manifestPath = RunManifestWriter.write(ctx.dataDir.resolve("manifests"), manifest)
+        ctx.close()
+        log.info(
+            "Done. requests={} 304s={} manifest={}",
+            manifest.requestsMade, manifest.requests304, manifestPath
+        )
+    }
+}
+
+private data class Parsed(val mode: String, val limit: Int?)
+
+private fun parseArgs(args: Array<String>): Parsed {
+    val positional = args.filterNot { it.startsWith("--") }
+    val flags = args.filter { it.startsWith("--") }
+    val mode = positional.firstOrNull()?.lowercase() ?: "update"
+    require(mode in setOf("full", "update")) {
+        "Usage: kep [full|update] [--limit=N]   (got: ${args.joinToString(" ")})"
+    }
+    val limit = flags.firstOrNull { it.startsWith("--limit=") }
+        ?.substringAfter("=")
+        ?.toIntOrNull()
+        ?.also { require(it > 0) { "--limit must be a positive integer" } }
+    return Parsed(mode, limit)
+}
