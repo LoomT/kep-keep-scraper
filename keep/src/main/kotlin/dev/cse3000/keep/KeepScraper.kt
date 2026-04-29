@@ -2,6 +2,7 @@ package dev.cse3000.keep
 
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.IssueAndPrCollector
+import dev.cse3000.gh.scraper.ScrapePhase
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -15,8 +16,11 @@ class KeepScraper(private val ctx: ScrapeContext) {
         const val TAG = "keep"
     }
 
-    suspend fun run(incremental: Boolean, limit: Int? = null) {
-        log.info("Scraping {}/{} (incremental={}, limit={})", OWNER, REPO, incremental, limit)
+    suspend fun run(incremental: Boolean, limit: Int? = null, phases: Set<ScrapePhase> = ScrapePhase.all) {
+        log.info(
+            "Scraping {}/{} (incremental={}, limit={}, phases={})",
+            OWNER, REPO, incremental, limit, phases.map { it.cli },
+        )
         coroutineScope {
             val collector = IssueAndPrCollector(
                 client = ctx.client,
@@ -26,9 +30,15 @@ class KeepScraper(private val ctx: ScrapeContext) {
                 repo = REPO,
                 repoTag = TAG,
             )
-            launch { collector.collectIssues(incremental, limit) }
-            launch { collector.collectPullRequests(incremental, limit) }
-            launch { KeepDiscussionsCollector(ctx).run(incremental, limit) }
+            if (ScrapePhase.ISSUES in phases) {
+                launch { collector.collectIssues(incremental, limit) }
+            }
+            if (ScrapePhase.PRS in phases) {
+                launch { collector.collectPullRequests(incremental, limit) }
+            }
+            if (ScrapePhase.DISCUSSIONS in phases) {
+                launch { KeepDiscussionsCollector(ctx).run(incremental, limit) }
+            }
         }
     }
 }
