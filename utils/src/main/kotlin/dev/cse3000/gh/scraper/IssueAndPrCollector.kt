@@ -36,9 +36,11 @@ class IssueAndPrCollector(
             "direction" to "asc",
         )
         if (incremental) cursor.get(cursorKeyIssues)?.let { params["since"] = it }
+        val total = client.countListEndpoint("/repos/$slug/issues", params)
+        val denominator: Any = limit ?: total ?: "?"
         log.info(
-            "Issues phase starting (slug={}, incremental={}, since={}, limit={})",
-            slug, incremental, params["since"], limit
+            "Issues phase starting (slug={}, incremental={}, since={}, limit={}, total={})",
+            slug, incremental, params["since"], limit, total,
         )
         val url = client.apiUrl("/repos/$slug/issues", params)
         var maxUpdated: String? = null
@@ -62,7 +64,7 @@ class IssueAndPrCollector(
             if (processed % 25 == 0) {
                 log.info(
                     "Issues progress: {}/{} processed (rate-limit remaining: {})",
-                    processed, limit ?: "∞", client.rateLimiter.remainingSnapshot
+                    processed, denominator, client.rateLimiter.remainingSnapshot,
                 )
             }
         }
@@ -79,10 +81,19 @@ class IssueAndPrCollector(
         )
         // The PRs list endpoint does not support `since`. We fall back to filtering client-side.
         val sinceCursor = if (incremental) cursor.get(cursorKeyPulls) else null
-        log.info(
-            "PRs phase starting (slug={}, incremental={}, sinceCursor={}, limit={})",
-            slug, incremental, sinceCursor, limit
-        )
+        val totalInRepo = client.countListEndpoint("/repos/$slug/pulls", params)
+        val denominator: Any = limit ?: totalInRepo ?: "?"
+        if (sinceCursor != null) {
+            log.info(
+                "PRs phase starting (slug={}, sinceCursor={}, limit={}, of {} total in repo — filter applied client-side)",
+                slug, sinceCursor, limit, totalInRepo,
+            )
+        } else {
+            log.info(
+                "PRs phase starting (slug={}, incremental={}, limit={}, total={})",
+                slug, incremental, limit, totalInRepo,
+            )
+        }
         val url = client.apiUrl("/repos/$slug/pulls", params)
         var maxUpdated: String? = null
         var processed = 0
@@ -99,7 +110,7 @@ class IssueAndPrCollector(
             if (processed % 25 == 0) {
                 log.info(
                     "PRs progress: {}/{} processed (rate-limit remaining: {})",
-                    processed, limit ?: "∞", client.rateLimiter.remainingSnapshot
+                    processed, denominator, client.rateLimiter.remainingSnapshot,
                 )
             }
         }

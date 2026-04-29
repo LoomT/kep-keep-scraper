@@ -81,6 +81,38 @@ class GithubClient(
         return rateLimiter.withPermit { graphqlPost(body) }
     }
 
+    /**
+     * Probe a list endpoint to discover the total item count via the `Link: rel="last"`
+     * header. Forces `per_page=1`. Bypasses ETag caching so we always get a fresh Link
+     * header (304 responses don't include pagination links). Returns null on probe
+     * failure or non-list responses.
+     */
+    suspend fun countListEndpoint(path: String, query: Map<String, String> = emptyMap()): Int? {
+        val probeQuery = query.toMutableMap().apply {
+            put("per_page", "1")
+            put("page", "1")
+        }
+        val url = apiUrl(path, probeQuery)
+        return rateLimiter.withPermit {
+            val resp = http.get(url) { applyHeaders(this) }
+            requestsMade.incrementAndGet()
+            rateLimiter.observe(
+                resp.headers["X-RateLimit-Remaining"],
+                resp.headers["X-RateLimit-Reset"],
+            )
+            if (resp.status.value !in 200..299) {
+                log.warn("countListEndpoint probe failed for {}: {}", url, resp.status)
+                return@withPermit null
+            }
+            val link = resp.headers[HttpHeaders.Link]
+            Paginator.lastPageNumber(link)?.let { return@withPermit it }
+            // No rel="last" can mean (a) single-page result, or (b) GitHub omitted
+            // it (notably for /issues?since=...). Distinguish via rel="next".
+            if (Paginator.nextLink(link) != null) return@withPermit null
+            (Jsons.compact.parseToJsonElement(resp.bodyAsText()) as? JsonArray)?.size
+        }
+    }
+
     private suspend fun fetchWithRetry(url: String): Pair<JsonElement, String?> {
         var attempt = 1
         while (true) {

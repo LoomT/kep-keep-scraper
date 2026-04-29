@@ -10,13 +10,11 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
 
     suspend fun run(incremental: Boolean, limit: Int? = null) {
         val sinceCursor = if (incremental) ctx.cursor.get(cursorKey) else null
-        log.info(
-            "Discussions phase starting (incremental={}, sinceCursor={}, limit={})",
-            incremental, sinceCursor, limit
-        )
         var afterCursor: String? = null
         var maxUpdated: String? = null
         var processed = 0
+        var totalInRepo: Int? = null
+        var denominator: Any = limit ?: "?"
 
         outer@ while (true) {
             val vars = buildJsonObject {
@@ -25,6 +23,21 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
             val resp = ctx.client.runGraphQL(LIST_DISCUSSIONS, vars).jsonObject
             checkErrors(resp, "ListDiscussions")
             val discussions = resp["data"]!!.jsonObject["repository"]!!.jsonObject["discussions"]!!.jsonObject
+            if (totalInRepo == null) {
+                totalInRepo = discussions["totalCount"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+                denominator = limit ?: totalInRepo ?: "?"
+                if (sinceCursor != null) {
+                    log.info(
+                        "Discussions phase starting (sinceCursor={}, limit={}, of {} total in repo)",
+                        sinceCursor, limit, totalInRepo,
+                    )
+                } else {
+                    log.info(
+                        "Discussions phase starting (incremental={}, limit={}, total={})",
+                        incremental, limit, totalInRepo,
+                    )
+                }
+            }
             val nodes = discussions["nodes"]!!.jsonArray
             for (node in nodes) {
                 if (limit != null && processed >= limit) break@outer
@@ -40,7 +53,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
                 if (processed % 25 == 0) {
                     log.info(
                         "Discussions progress: {}/{} processed (rate-limit remaining: {})",
-                        processed, limit ?: "∞", ctx.client.rateLimiter.remainingSnapshot
+                        processed, denominator, ctx.client.rateLimiter.remainingSnapshot,
                     )
                 }
             }
@@ -142,6 +155,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
             query($cursor: String) {
               repository(owner: "Kotlin", name: "KEEP") {
                 discussions(first: 50, after: $cursor, orderBy: { field: UPDATED_AT, direction: ASC }) {
+                  totalCount
                   pageInfo { endCursor hasNextPage }
                   nodes {
                     id databaseId number title body bodyText url createdAt updatedAt
