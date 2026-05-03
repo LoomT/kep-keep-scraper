@@ -15,6 +15,7 @@ data class RunManifest(
     @SerialName("requests_made") val requestsMade: Int,
     @SerialName("requests_304") val requests304: Int,
     val counts: Map<String, Int>,
+    val cancelled: Boolean = false,
     val errors: List<String> = emptyList(),
 )
 

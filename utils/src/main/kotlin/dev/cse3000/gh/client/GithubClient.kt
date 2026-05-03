@@ -9,9 +9,11 @@ import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.net.URLEncoder
@@ -136,8 +138,10 @@ class GithubClient(
                 }
                 resp.status.isSuccess() -> {
                     val text = resp.bodyAsText()
-                    cache.put(url, text)
-                    resp.headers[HttpHeaders.ETag]?.let { etags.put(url, it) }
+                    withContext(NonCancellable) {
+                        cache.put(url, text)
+                        resp.headers[HttpHeaders.ETag]?.let { etags.put(url, it) }
+                    }
                     return Jsons.compact.parseToJsonElement(text) to link
                 }
                 resp.status.value == 403 || resp.status.value == 429 -> {

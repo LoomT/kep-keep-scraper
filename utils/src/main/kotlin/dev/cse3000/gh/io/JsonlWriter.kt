@@ -24,11 +24,8 @@ class JsonlWriter(path: Path) : AutoCloseable {
     }
 
     suspend fun append(element: JsonElement) {
-        val line = Jsons.compact.encodeToString(JsonElement.serializer(), element)
-        mutex.withLock {
-            writer.write(line)
-            writer.newLine()
-        }
+        val line = Jsons.compact.encodeToString(JsonElement.serializer(), element) + System.lineSeparator()
+        mutex.withLock { writer.write(line) }
     }
 
     suspend fun flush() = mutex.withLock { writer.flush() }

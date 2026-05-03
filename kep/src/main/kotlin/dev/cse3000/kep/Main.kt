@@ -4,12 +4,14 @@ import dev.cse3000.gh.io.RunManifest
 import dev.cse3000.gh.io.RunManifestWriter
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.ScrapePhase
+import dev.cse3000.gh.scraper.launchStopFileWatcher
 import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 
 private val log = LoggerFactory.getLogger("dev.cse3000.kep.Main")
+private val SHUTDOWN_TIMEOUT = 30.seconds
 
 fun main(args: Array<String>): Unit = runBlocking {
     val parsed = parseArgs(args)
@@ -17,6 +19,21 @@ fun main(args: Array<String>): Unit = runBlocking {
     val started = Instant.now().toString()
     val ctx = ScrapeContext.create()
     val errors = mutableListOf<String>()
+    var cancelled = false
+
+    val rootJob = coroutineContext.job
+    val shutdownHook = Thread {
+        log.warn("Shutdown signal received; cancelling scrape gracefully (up to {})", SHUTDOWN_TIMEOUT)
+        rootJob.cancel(CancellationException("Shutdown signal received"))
+        runBlocking {
+            val finished = withTimeoutOrNull(SHUTDOWN_TIMEOUT) { rootJob.join() }
+            if (finished == null) log.warn("Graceful shutdown timed out after {}", SHUTDOWN_TIMEOUT)
+        }
+    }
+    Runtime.getRuntime().addShutdownHook(shutdownHook)
+
+    val stopWatcherJob = launchStopFileWatcher(ctx.dataDir.resolve("STOP"))
+
     val flushInterval = 60.seconds
     val flushJob = launch {
         while (isActive) {
@@ -34,31 +51,42 @@ fun main(args: Array<String>): Unit = runBlocking {
         )
         KepScraper(ctx).run(incremental, parsed.limit, parsed.phases)
         ctx.persist()
+    } catch (ce: CancellationException) {
+        cancelled = true
+        errors += "cancelled: ${ce.message ?: "(no message)"}"
+        log.warn("Scrape cancelled: {}", ce.message)
     } catch (e: Throwable) {
         errors += "fatal: ${e::class.simpleName}: ${e.message}"
         log.error("Scrape failed", e)
         throw e
     } finally {
-        flushJob.cancel()
-        flushJob.join()
-        val manifest = RunManifest(
-            startedAt = started,
-            finishedAt = Instant.now().toString(),
-            mode = parsed.mode,
-            repo = "kubernetes/enhancements",
-            rateLimitRemainingAtEnd = ctx.client.rateLimiter.remainingSnapshot
-                .takeIf { it != Int.MAX_VALUE },
-            requestsMade = ctx.client.requestsMade.get(),
-            requests304 = ctx.client.requests304.get(),
-            counts = ctx.sink.counts.toMap(),
-            errors = errors,
-        )
-        val manifestPath = RunManifestWriter.write(ctx.dataDir.resolve("manifests"), manifest)
-        ctx.close()
-        log.info(
-            "Done. requests={} 304s={} manifest={}",
-            manifest.requestsMade, manifest.requests304, manifestPath
-        )
+        withContext(NonCancellable) {
+            flushJob.cancel()
+            runCatching { flushJob.join() }
+            stopWatcherJob.cancel()
+            runCatching { stopWatcherJob.join() }
+            runCatching { ctx.persist() }
+            val manifest = RunManifest(
+                startedAt = started,
+                finishedAt = Instant.now().toString(),
+                mode = parsed.mode,
+                repo = "kubernetes/enhancements",
+                rateLimitRemainingAtEnd = ctx.client.rateLimiter.remainingSnapshot
+                    .takeIf { it != Int.MAX_VALUE },
+                requestsMade = ctx.client.requestsMade.get(),
+                requests304 = ctx.client.requests304.get(),
+                counts = ctx.sink.counts.toMap(),
+                cancelled = cancelled,
+                errors = errors,
+            )
+            val manifestPath = RunManifestWriter.write(ctx.dataDir.resolve("manifests"), manifest)
+            ctx.close()
+            log.info(
+                "Done. cancelled={} requests={} 304s={} manifest={}",
+                cancelled, manifest.requestsMade, manifest.requests304, manifestPath,
+            )
+        }
+        runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
     }
 }
 
