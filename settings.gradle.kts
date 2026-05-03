@@ -13,7 +13,7 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-include(":utils")
+include(":scraper")
 include(":keep")
 include(":kep")
 include(":rq3")

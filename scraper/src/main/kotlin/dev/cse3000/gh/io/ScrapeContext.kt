@@ -30,16 +30,15 @@ class ScrapeContext(
     }
 
     companion object {
-        fun create(): ScrapeContext {
+        fun create(dataDir: Path = Env.dataDir()): ScrapeContext {
             val token = Env.githubToken()
-            val data = Env.dataDir()
-            val cache = RawCache(data.resolve("cache").resolve("raw"))
-            val etags = EtagStore(data.resolve("cache").resolve("etags.json"))
-            val cursor = SyncCursor(data.resolve("cache").resolve("last-sync.json"))
-            val gitCursor = GitCursor(data.resolve("cache").resolve("git-heads.json"))
+            val cache = RawCache(dataDir.resolve("cache").resolve("raw"))
+            val etags = EtagStore(dataDir.resolve("cache").resolve("etags.json"))
+            val cursor = SyncCursor(dataDir.resolve("cache").resolve("last-sync.json"))
+            val gitCursor = GitCursor(dataDir.resolve("cache").resolve("git-heads.json"))
             val client = GithubClient(token, cache, etags, rateLimiter = RateLimiter(permits = Env.concurrency()))
-            val sink = JsonlSink(data.resolve("normalized"))
-            return ScrapeContext(client, sink, cursor, etags, gitCursor, data)
+            val sink = JsonlSink(dataDir.resolve("normalized"))
+            return ScrapeContext(client, sink, cursor, etags, gitCursor, dataDir)
         }
     }
 }

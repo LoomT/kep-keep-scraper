@@ -1,12 +1,31 @@
-package dev.cse3000.keep
+package dev.cse3000.gh.scraper
 
 import dev.cse3000.gh.io.ScrapeContext
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 
-class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
-    private val cursorKey = "keep.discussions.updated_at"
-    private val log = LoggerFactory.getLogger(KeepDiscussionsCollector::class.java)
+/**
+ * Walks GitHub Discussions for a given repository via GraphQL. Owner / name
+ * are passed in as variables so the same query strings work for any repo.
+ *
+ * The `tag` parameter is the JSONL stream prefix and cursor key root, e.g.
+ * "keep" → emits to `keep-discussions.jsonl`, cursor key `keep.discussions.updated_at`.
+ */
+class DiscussionsCollector(
+    private val ctx: ScrapeContext,
+    private val owner: String,
+    private val repo: String,
+    private val tag: String,
+) {
+    private val cursorKey = "$tag.discussions.updated_at"
+    private val slug = "$owner/$repo"
+    private val log = LoggerFactory.getLogger("${DiscussionsCollector::class.java.name}.$tag")
+
+    private fun repoVars(extra: JsonObjectBuilder.() -> Unit = {}) = buildJsonObject {
+        put("owner", JsonPrimitive(owner))
+        put("name", JsonPrimitive(repo))
+        extra()
+    }
 
     suspend fun run(incremental: Boolean, limit: Int? = null) {
         val sinceCursor = if (incremental) ctx.cursor.get(cursorKey) else null
@@ -16,7 +35,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
         var denominator: Any = limit ?: "?"
 
         outer@ while (true) {
-            val vars = buildJsonObject {
+            val vars = repoVars {
                 put("cursor", afterCursor?.let { JsonPrimitive(it) } ?: JsonNull)
             }
             val resp = ctx.client.runGraphQL(LIST_DISCUSSIONS, vars).jsonObject
@@ -27,13 +46,13 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
                 denominator = limit ?: totalInRepo ?: "?"
                 if (sinceCursor != null) {
                     log.info(
-                        "Discussions phase starting (sinceCursor={}, limit={}, of {} total in repo)",
-                        sinceCursor, limit, totalInRepo,
+                        "Discussions phase starting (slug={}, sinceCursor={}, limit={}, of {} total in repo)",
+                        slug, sinceCursor, limit, totalInRepo,
                     )
                 } else {
                     log.info(
-                        "Discussions phase starting (incremental={}, limit={}, total={})",
-                        incremental, limit, totalInRepo,
+                        "Discussions phase starting (slug={}, incremental={}, limit={}, total={})",
+                        slug, incremental, limit, totalInRepo,
                     )
                 }
             }
@@ -43,7 +62,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
                 val obj = node.jsonObject
                 val updated = obj["updatedAt"]?.jsonPrimitive?.contentOrNull
                 if (sinceCursor != null && updated != null && updated < sinceCursor) continue
-                ctx.sink.emit("keep-discussions", obj, mapOf("repo" to "Kotlin/KEEP"))
+                ctx.sink.emit("$tag-discussions", obj, mapOf("repo" to slug))
 
                 val number = obj["number"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
                 fetchAllComments(number)
@@ -67,7 +86,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
     private suspend fun fetchAllComments(discussionNumber: Int) {
         var afterCursor: String? = null
         while (true) {
-            val vars = buildJsonObject {
+            val vars = repoVars {
                 put("number", JsonPrimitive(discussionNumber))
                 put("cursor", afterCursor?.let { JsonPrimitive(it) } ?: JsonNull)
             }
@@ -79,18 +98,18 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
             for (node in nodes) {
                 val obj = node.jsonObject
                 ctx.sink.emit(
-                    "keep-discussion-comments",
+                    "$tag-discussion-comments",
                     obj,
-                    mapOf("repo" to "Kotlin/KEEP", "discussion" to discussionNumber.toString()),
+                    mapOf("repo" to slug, "discussion" to discussionNumber.toString()),
                 )
                 val replyPage = obj["replies"]?.let { it as? JsonObject } ?: continue
                 val replyNodes = replyPage["nodes"] as? JsonArray ?: continue
                 for (reply in replyNodes) {
                     ctx.sink.emit(
-                        "keep-discussion-comment-replies",
+                        "$tag-discussion-comment-replies",
                         reply.jsonObject,
                         mapOf(
-                            "repo" to "Kotlin/KEEP",
+                            "repo" to slug,
                             "discussion" to discussionNumber.toString(),
                             "parent" to (obj["id"]?.jsonPrimitive?.contentOrNull ?: ""),
                         ),
@@ -127,17 +146,18 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
             val replies = node["replies"]!!.jsonObject
             for (reply in replies["nodes"]!!.jsonArray) {
                 ctx.sink.emit(
-                    "keep-discussion-comment-replies",
+                    "$tag-discussion-comment-replies",
                     reply.jsonObject,
                     mapOf(
-                        "repo" to "Kotlin/KEEP",
+                        "repo" to slug,
                         "discussion" to discussionNumber.toString(),
                         "parent" to commentNodeId,
                     ),
                 )
             }
             val hasNext = replies["pageInfo"]!!.jsonObject["hasNextPage"]?.jsonPrimitive?.boolean ?: false
-            afterCursor = if (hasNext) replies["pageInfo"]!!.jsonObject["endCursor"]?.jsonPrimitive?.contentOrNull else null
+            afterCursor =
+                if (hasNext) replies["pageInfo"]!!.jsonObject["endCursor"]?.jsonPrimitive?.contentOrNull else null
         }
     }
 
@@ -150,8 +170,8 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
 
     companion object {
         private val LIST_DISCUSSIONS = $$"""
-            query($cursor: String) {
-              repository(owner: "Kotlin", name: "KEEP") {
+            query($owner: String!, $name: String!, $cursor: String) {
+              repository(owner: $owner, name: $name) {
                 discussions(first: 50, after: $cursor, orderBy: { field: UPDATED_AT, direction: ASC }) {
                   totalCount
                   pageInfo { endCursor hasNextPage }
@@ -170,8 +190,8 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
         """.trimIndent()
 
         private val LIST_COMMENTS = $$"""
-            query($number: Int!, $cursor: String) {
-              repository(owner: "Kotlin", name: "KEEP") {
+            query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+              repository(owner: $owner, name: $name) {
                 discussion(number: $number) {
                   comments(first: 50, after: $cursor) {
                     pageInfo { endCursor hasNextPage }

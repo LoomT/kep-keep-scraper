@@ -5,7 +5,7 @@ plugins {
 }
 
 dependencies {
-    implementation(projects.utils)
+    implementation(projects.scraper)
     testImplementation(kotlin("test"))
 }
 
@@ -18,7 +18,7 @@ tasks.register<JavaExec>("runFull") {
     description = "Run a full KEP scrape."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dev.cse3000.kep.MainKt")
-    args = listOf("full")
+    args = listOf("--mode=full")
 }
 
 tasks.register<JavaExec>("runUpdate") {
@@ -26,5 +26,5 @@ tasks.register<JavaExec>("runUpdate") {
     description = "Run an incremental KEP scrape."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("dev.cse3000.kep.MainKt")
-    args = listOf("update")
+    args = listOf("--mode=update")
 }
