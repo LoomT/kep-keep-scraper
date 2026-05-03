@@ -9,6 +9,7 @@ import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -118,64 +119,76 @@ class GithubClient(
     private suspend fun fetchWithRetry(url: String): Pair<JsonElement, String?> {
         var attempt = 1
         while (true) {
-            val etag = etags.get(url)
-            val resp = http.get(url) {
-                applyHeaders(this)
-                if (etag != null) header(HttpHeaders.IfNoneMatch, etag)
-            }
-            requestsMade.incrementAndGet()
-            rateLimiter.observe(
-                resp.headers["X-RateLimit-Remaining"],
-                resp.headers["X-RateLimit-Reset"],
-            )
-            val link = resp.headers[HttpHeaders.Link]
-            when {
-                resp.status == HttpStatusCode.NotModified -> {
-                    requests304.incrementAndGet()
-                    val cached = cache.get(url)
-                        ?: error("304 with no cached body for $url; delete data/cache to recover")
-                    return Jsons.compact.parseToJsonElement(cached) to link
+            try {
+                val etag = etags.get(url)
+                val resp = http.get(url) {
+                    applyHeaders(this)
+                    if (etag != null) header(HttpHeaders.IfNoneMatch, etag)
                 }
-                resp.status.isSuccess() -> {
-                    val text = resp.bodyAsText()
-                    withContext(NonCancellable) {
-                        cache.put(url, text)
-                        resp.headers[HttpHeaders.ETag]?.let { etags.put(url, it) }
+                requestsMade.incrementAndGet()
+                rateLimiter.observe(
+                    resp.headers["X-RateLimit-Remaining"],
+                    resp.headers["X-RateLimit-Reset"],
+                )
+                val link = resp.headers[HttpHeaders.Link]
+                when {
+                    resp.status == HttpStatusCode.NotModified -> {
+                        requests304.incrementAndGet()
+                        val cached = cache.get(url)
+                            ?: error("304 with no cached body for $url; delete data/cache to recover")
+                        return Jsons.compact.parseToJsonElement(cached.body) to (cached.link ?: link)
                     }
-                    return Jsons.compact.parseToJsonElement(text) to link
+
+                    resp.status.isSuccess() -> {
+                        val text = resp.bodyAsText()
+                        withContext(NonCancellable) {
+                            cache.put(url, text, link)
+                            resp.headers[HttpHeaders.ETag]?.let { etags.put(url, it) }
+                        }
+                        return Jsons.compact.parseToJsonElement(text) to link
+                    }
+
+                    resp.status.value == 403 || resp.status.value == 429 -> {
+                        if (attempt > maxRetries) error("Rate-limited: $url (gave up after $maxRetries)")
+                        val wait = retryDelay(resp)
+                        log.warn(
+                            "HTTP {} on {} — waiting {} (attempt {}/{})",
+                            resp.status.value, url, wait, attempt, maxRetries,
+                        )
+                        delay(wait)
+                        attempt++
+                    }
+
+                    resp.status.value in 500..599 -> {
+                        if (attempt > maxRetries) error("5xx ${resp.status} on $url after $maxRetries attempts")
+                        val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
+                        log.warn(
+                            "HTTP {} on {} — backing off {} (attempt {}/{})",
+                            resp.status.value, url, backoff, attempt, maxRetries,
+                        )
+                        delay(backoff)
+                        attempt++
+                    }
+
+                    resp.status == HttpStatusCode.NotFound -> {
+                        error("404 Not Found: $url")
+                    }
+
+                    else -> error("Unexpected ${resp.status} on $url: ${resp.bodyAsText().take(500)}")
                 }
-                resp.status.value == 403 || resp.status.value == 429 -> {
-                    if (attempt > maxRetries) error("Rate-limited: $url (gave up after $maxRetries)")
-                    val wait = retryDelay(resp)
-                    log.warn(
-                        "HTTP {} on {} — waiting {} (attempt {}/{})",
-                        resp.status.value,
-                        url,
-                        wait,
-                        attempt,
-                        maxRetries,
-                    )
-                    delay(wait)
-                    attempt++
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: java.io.IOException) {
+                if (attempt > maxRetries) {
+                    throw java.io.IOException("Network error on $url after $maxRetries attempts: ${e.message}", e)
                 }
-                resp.status.value in 500..599 -> {
-                    if (attempt > maxRetries) error("5xx ${resp.status} on $url after $maxRetries attempts")
-                    val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
-                    log.warn(
-                        "HTTP {} on {} — backing off {} (attempt {}/{})",
-                        resp.status.value,
-                        url,
-                        backoff,
-                        attempt,
-                        maxRetries,
-                    )
-                    delay(backoff)
-                    attempt++
-                }
-                resp.status == HttpStatusCode.NotFound -> {
-                    error("404 Not Found: $url")
-                }
-                else -> error("Unexpected ${resp.status} on $url: ${resp.bodyAsText().take(500)}")
+                val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
+                log.warn(
+                    "Network error on {}: {}: {} — backing off {} (attempt {}/{})",
+                    url, e::class.simpleName, e.message, backoff, attempt, maxRetries,
+                )
+                delay(backoff)
+                attempt++
             }
         }
     }
@@ -183,45 +196,56 @@ class GithubClient(
     private suspend fun graphqlPost(body: String): JsonElement {
         var attempt = 1
         while (true) {
-            val resp = http.post(graphqlUrl) {
-                applyHeaders(this)
-                contentType(ContentType.Application.Json)
-                setBody(body)
-            }
-            requestsMade.incrementAndGet()
-            rateLimiter.observe(
-                resp.headers["X-RateLimit-Remaining"],
-                resp.headers["X-RateLimit-Reset"],
-            )
-            when {
-                resp.status.isSuccess() -> return Jsons.compact.parseToJsonElement(resp.bodyAsText())
-                resp.status.value == 403 || resp.status.value == 429 -> {
-                    if (attempt > maxRetries) error("GraphQL rate-limited, retries exhausted")
-                    val wait = retryDelay(resp)
-                    log.warn(
-                        "GraphQL HTTP {} — waiting {} (attempt {}/{})",
-                        resp.status.value,
-                        wait,
-                        attempt,
-                        maxRetries
-                    )
-                    delay(wait)
-                    attempt++
+            try {
+                val resp = http.post(graphqlUrl) {
+                    applyHeaders(this)
+                    contentType(ContentType.Application.Json)
+                    setBody(body)
                 }
-                resp.status.value in 500..599 -> {
-                    if (attempt > maxRetries) error("GraphQL 5xx exhausted: ${resp.status}")
-                    val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
-                    log.warn(
-                        "GraphQL HTTP {} — backing off {} (attempt {}/{})",
-                        resp.status.value,
-                        backoff,
-                        attempt,
-                        maxRetries,
-                    )
-                    delay(backoff)
-                    attempt++
+                requestsMade.incrementAndGet()
+                rateLimiter.observe(
+                    resp.headers["X-RateLimit-Remaining"],
+                    resp.headers["X-RateLimit-Reset"],
+                )
+                when {
+                    resp.status.isSuccess() -> return Jsons.compact.parseToJsonElement(resp.bodyAsText())
+                    resp.status.value == 403 || resp.status.value == 429 -> {
+                        if (attempt > maxRetries) error("GraphQL rate-limited, retries exhausted")
+                        val wait = retryDelay(resp)
+                        log.warn(
+                            "GraphQL HTTP {} — waiting {} (attempt {}/{})",
+                            resp.status.value, wait, attempt, maxRetries,
+                        )
+                        delay(wait)
+                        attempt++
+                    }
+
+                    resp.status.value in 500..599 -> {
+                        if (attempt > maxRetries) error("GraphQL 5xx exhausted: ${resp.status}")
+                        val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
+                        log.warn(
+                            "GraphQL HTTP {} — backing off {} (attempt {}/{})",
+                            resp.status.value, backoff, attempt, maxRetries,
+                        )
+                        delay(backoff)
+                        attempt++
+                    }
+
+                    else -> error("GraphQL ${resp.status}: ${resp.bodyAsText().take(500)}")
                 }
-                else -> error("GraphQL ${resp.status}: ${resp.bodyAsText().take(500)}")
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: java.io.IOException) {
+                if (attempt > maxRetries) {
+                    throw java.io.IOException("GraphQL network error after $maxRetries attempts: ${e.message}", e)
+                }
+                val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
+                log.warn(
+                    "GraphQL network error: {}: {} — backing off {} (attempt {}/{})",
+                    e::class.simpleName, e.message, backoff, attempt, maxRetries,
+                )
+                delay(backoff)
+                attempt++
             }
         }
     }

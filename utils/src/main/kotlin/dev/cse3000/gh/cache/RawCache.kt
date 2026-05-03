@@ -6,6 +6,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
+data class CachedResponse(val body: String, val link: String?)
+
 class RawCache(private val root: Path) {
     private val mutex = Mutex()
 
@@ -14,15 +16,27 @@ class RawCache(private val root: Path) {
         return root.resolve(hash.substring(0, 2)).resolve("$hash.json")
     }
 
-    suspend fun get(url: String): String? = mutex.withLock {
+    private fun linkPathFor(url: String): Path {
         val p = pathFor(url)
-        if (Files.exists(p)) Files.readString(p) else null
+        return p.resolveSibling("${p.fileName}.link")
     }
 
-    suspend fun put(url: String, body: String) = mutex.withLock {
+    suspend fun get(url: String): CachedResponse? = mutex.withLock {
+        val p = pathFor(url)
+        if (!Files.exists(p)) return@withLock null
+        val body = Files.readString(p)
+        val linkPath = linkPathFor(url)
+        val link = if (Files.exists(linkPath)) Files.readString(linkPath) else null
+        CachedResponse(body, link)
+    }
+
+    suspend fun put(url: String, body: String, link: String? = null): Unit = mutex.withLock {
         val p = pathFor(url)
         Files.createDirectories(p.parent)
         Files.writeString(p, body)
+        val linkPath = linkPathFor(url)
+        if (link != null) Files.writeString(linkPath, link)
+        else Files.deleteIfExists(linkPath)
     }
 
     private fun sha1(s: String): String {
