@@ -3,7 +3,9 @@ package dev.cse3000.gh.scraper
 import dev.cse3000.gh.cache.SyncCursor
 import dev.cse3000.gh.client.GithubClient
 import dev.cse3000.gh.io.JsonlSink
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -57,8 +59,10 @@ class IssueAndPrCollector(
             val isPr = obj["pull_request"] is JsonObject
             if (number != null) {
                 val commentStream = if (isPr) "$repoTag-pr-issuecomments" else "$repoTag-issue-comments"
-                collectIssueComments(number, commentStream)
-                collectTimeline(number, isPr)
+                coroutineScope {
+                    launch { collectIssueComments(number, commentStream) }
+                    launch { collectTimeline(number, isPr) }
+                }
             }
             processed++
             if (processed % 25 == 0) {
@@ -118,21 +122,28 @@ class IssueAndPrCollector(
         log.info("PRs phase done: {} processed, max updated_at={}", processed, maxUpdated)
     }
 
-    private suspend fun collectPullDetails(prNumber: Int) {
-        val detail = client.getJson(client.apiUrl("/repos/$slug/pulls/$prNumber"))
-        sink.emit("$repoTag-pull-detail", detail, mapOf("repo" to slug, "pr" to prNumber.toString()))
-
-        client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/files", mapOf("per_page" to "100")))
-            .collect { sink.emit("$repoTag-pr-files", it, mapOf("repo" to slug, "pr" to prNumber.toString())) }
-
-        client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/reviews", mapOf("per_page" to "100")))
-            .collect { sink.emit("$repoTag-pr-reviews", it, mapOf("repo" to slug, "pr" to prNumber.toString())) }
-
-        client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/comments", mapOf("per_page" to "100")))
-            .collect { sink.emit("$repoTag-pr-review-comments", it, mapOf("repo" to slug, "pr" to prNumber.toString())) }
-
-        client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/commits", mapOf("per_page" to "100")))
-            .collect { sink.emit("$repoTag-pr-commits", it, mapOf("repo" to slug, "pr" to prNumber.toString())) }
+    private suspend fun collectPullDetails(prNumber: Int) = coroutineScope {
+        val meta = mapOf("repo" to slug, "pr" to prNumber.toString())
+        launch {
+            val detail = client.getJson(client.apiUrl("/repos/$slug/pulls/$prNumber"))
+            sink.emit("$repoTag-pull-detail", detail, meta)
+        }
+        launch {
+            client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/files", mapOf("per_page" to "100")))
+                .collect { sink.emit("$repoTag-pr-files", it, meta) }
+        }
+        launch {
+            client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/reviews", mapOf("per_page" to "100")))
+                .collect { sink.emit("$repoTag-pr-reviews", it, meta) }
+        }
+        launch {
+            client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/comments", mapOf("per_page" to "100")))
+                .collect { sink.emit("$repoTag-pr-review-comments", it, meta) }
+        }
+        launch {
+            client.getJsonPaginated(client.apiUrl("/repos/$slug/pulls/$prNumber/commits", mapOf("per_page" to "100")))
+                .collect { sink.emit("$repoTag-pr-commits", it, meta) }
+        }
     }
 
     private suspend fun collectIssueComments(number: Int, stream: String) {

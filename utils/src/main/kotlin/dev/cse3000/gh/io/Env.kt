@@ -12,4 +12,7 @@ object Env {
         val override = System.getenv("SCRAPER_DATA_DIR")?.takeIf { it.isNotBlank() }
         return Paths.get(override ?: "data").toAbsolutePath()
     }
+
+    fun concurrency(default: Int = 16): Int =
+        System.getenv("SCRAPER_CONCURRENCY")?.toIntOrNull()?.takeIf { it > 0 } ?: default
 }

@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.seconds
 
 class RateLimiter(
-    permits: Int = 8,
+    permits: Int = 16,
     private val floor: Int = 100,
 ) {
     private val semaphore = Semaphore(permits)
