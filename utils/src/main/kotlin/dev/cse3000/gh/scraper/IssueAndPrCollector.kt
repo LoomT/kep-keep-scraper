@@ -45,16 +45,13 @@ class IssueAndPrCollector(
             slug, incremental, params["since"], limit, total,
         )
         val url = client.apiUrl("/repos/$slug/issues", params)
-        var maxUpdated: String? = null
         var processed = 0
         val flow = client.getJsonPaginated(url)
         val capped = if (limit != null) flow.take(limit) else flow
         capped.collect { item ->
             val obj = item.jsonObject
             sink.emit("$repoTag-issues", obj, mapOf("repo" to slug))
-            obj["updated_at"]?.jsonPrimitive?.contentOrNull?.let { ts ->
-                if (ts > (maxUpdated ?: "")) maxUpdated = ts
-            }
+            val updatedAt = obj["updated_at"]?.jsonPrimitive?.contentOrNull
             val number = obj["number"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
             val isPr = obj["pull_request"] is JsonObject
             if (number != null) {
@@ -64,6 +61,7 @@ class IssueAndPrCollector(
                     launch { collectTimeline(number, isPr) }
                 }
             }
+            if (updatedAt != null) cursor.advance(cursorKeyIssues, updatedAt)
             processed++
             if (processed % 25 == 0) {
                 log.info(
@@ -72,8 +70,7 @@ class IssueAndPrCollector(
                 )
             }
         }
-        maxUpdated?.let { cursor.advance(cursorKeyIssues, it) }
-        log.info("Issues phase done: {} processed, max updated_at={}", processed, maxUpdated)
+        log.info("Issues phase done: {} processed, max updated_at={}", processed, cursor.get(cursorKeyIssues))
     }
 
     suspend fun collectPullRequests(incremental: Boolean, limit: Int? = null) {
@@ -99,7 +96,6 @@ class IssueAndPrCollector(
             )
         }
         val url = client.apiUrl("/repos/$slug/pulls", params)
-        var maxUpdated: String? = null
         var processed = 0
         client.getJsonPaginated(url).collect { item ->
             val obj = item.jsonObject
@@ -107,9 +103,9 @@ class IssueAndPrCollector(
             if (sinceCursor != null && updatedAt != null && updatedAt < sinceCursor) return@collect
             if (limit != null && processed >= limit) return@collect
             sink.emit("$repoTag-pulls", obj, mapOf("repo" to slug))
-            updatedAt?.let { if (it > (maxUpdated ?: "")) maxUpdated = it }
             val number = obj["number"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return@collect
             collectPullDetails(number)
+            if (updatedAt != null) cursor.advance(cursorKeyPulls, updatedAt)
             processed++
             if (processed % 25 == 0) {
                 log.info(
@@ -118,8 +114,7 @@ class IssueAndPrCollector(
                 )
             }
         }
-        maxUpdated?.let { cursor.advance(cursorKeyPulls, it) }
-        log.info("PRs phase done: {} processed, max updated_at={}", processed, maxUpdated)
+        log.info("PRs phase done: {} processed, max updated_at={}", processed, cursor.get(cursorKeyPulls))
     }
 
     private suspend fun collectPullDetails(prNumber: Int) = coroutineScope {

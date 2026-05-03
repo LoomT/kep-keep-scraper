@@ -11,7 +11,6 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
     suspend fun run(incremental: Boolean, limit: Int? = null) {
         val sinceCursor = if (incremental) ctx.cursor.get(cursorKey) else null
         var afterCursor: String? = null
-        var maxUpdated: String? = null
         var processed = 0
         var totalInRepo: Int? = null
         var denominator: Any = limit ?: "?"
@@ -45,10 +44,10 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
                 val updated = obj["updatedAt"]?.jsonPrimitive?.contentOrNull
                 if (sinceCursor != null && updated != null && updated < sinceCursor) continue
                 ctx.sink.emit("keep-discussions", obj, mapOf("repo" to "Kotlin/KEEP"))
-                if (updated != null && updated > (maxUpdated ?: "")) maxUpdated = updated
 
                 val number = obj["number"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
                 fetchAllComments(number)
+                if (updated != null) ctx.cursor.advance(cursorKey, updated)
                 processed++
                 if (processed % 25 == 0) {
                     log.info(
@@ -62,8 +61,7 @@ class KeepDiscussionsCollector(private val ctx: ScrapeContext) {
             if (!hasNext) break
             afterCursor = pageInfo["endCursor"]?.jsonPrimitive?.contentOrNull ?: break
         }
-        maxUpdated?.let { ctx.cursor.advance(cursorKey, it) }
-        log.info("Discussions phase done: {} processed, max updated_at={}", processed, maxUpdated)
+        log.info("Discussions phase done: {} processed, max updated_at={}", processed, ctx.cursor.get(cursorKey))
     }
 
     private suspend fun fetchAllComments(discussionNumber: Int) {
