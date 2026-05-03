@@ -1,6 +1,7 @@
 package dev.cse3000.gh.scraper
 
 enum class ScrapePhase(val cli: String) {
+    REPO_INFO("repo-info"),
     ISSUES("issues"),
     PRS("prs"),
     DISCUSSIONS("discussions"),

@@ -2,6 +2,7 @@ package dev.cse3000.keep
 
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.IssueAndPrCollector
+import dev.cse3000.gh.scraper.RepoInfoCollector
 import dev.cse3000.gh.scraper.ScrapePhase
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -30,6 +31,9 @@ class KeepScraper(private val ctx: ScrapeContext) {
                 repo = REPO,
                 repoTag = TAG,
             )
+            if (ScrapePhase.REPO_INFO in phases) {
+                launch { RepoInfoCollector(ctx.client, ctx.sink, OWNER, REPO, TAG).run() }
+            }
             if (ScrapePhase.ISSUES in phases) {
                 launch { collector.collectIssues(incremental, limit) }
             }
@@ -38,6 +42,9 @@ class KeepScraper(private val ctx: ScrapeContext) {
             }
             if (ScrapePhase.DISCUSSIONS in phases) {
                 launch { KeepDiscussionsCollector(ctx).run(incremental, limit) }
+            }
+            if (ScrapePhase.PROPOSALS in phases) {
+                launch { KeepRevisionCollector(ctx).run() }
             }
         }
     }

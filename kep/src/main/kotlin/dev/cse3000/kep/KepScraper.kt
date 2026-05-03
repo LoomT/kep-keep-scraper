@@ -2,6 +2,7 @@ package dev.cse3000.kep
 
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.IssueAndPrCollector
+import dev.cse3000.gh.scraper.RepoInfoCollector
 import dev.cse3000.gh.scraper.ScrapePhase
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -33,6 +34,9 @@ class KepScraper(private val ctx: ScrapeContext) {
                 repo = REPO,
                 repoTag = TAG,
             )
+            if (ScrapePhase.REPO_INFO in phases) {
+                launch { RepoInfoCollector(ctx.client, ctx.sink, OWNER, REPO, TAG).run() }
+            }
             if (ScrapePhase.ISSUES in phases) {
                 launch { collector.collectIssues(incremental, limit) }
             }
@@ -40,7 +44,7 @@ class KepScraper(private val ctx: ScrapeContext) {
                 launch { collector.collectPullRequests(incremental, limit) }
             }
             if (ScrapePhase.PROPOSALS in phases) {
-                launch { KepDiscovery(ctx).run(limit) }
+                launch { KepRevisionCollector(ctx).run() }
             }
         }
     }

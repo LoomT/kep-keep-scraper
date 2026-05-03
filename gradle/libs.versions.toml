@@ -8,9 +8,9 @@ kotlinxDatetime = "0.7.1"
 kotlinxSerializationJSON = "1.9.0"
 kotlinxCoroutines = "1.10.2"
 ktor = "3.0.3"
-kaml = "0.65.0"
 slf4j = "2.0.13"
 logback = "1.5.13"
+jgit = "7.6.0.202603022253-r"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -25,10 +25,10 @@ ktorClientLogging      = { module = "io.ktor:ktor-client-logging",             v
 ktorClientAuth         = { module = "io.ktor:ktor-client-auth",                version.ref = "ktor" }
 ktorSerializationJson  = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
-kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
-
 slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 
 # Libraries can be bundled together for easier import
 [bundles]

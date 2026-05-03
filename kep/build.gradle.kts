@@ -6,7 +6,6 @@ plugins {
 
 dependencies {
     implementation(projects.utils)
-    implementation(libs.kaml)
     testImplementation(kotlin("test"))
 }
 
