@@ -13,7 +13,10 @@ fun main() {
         ?: error("Pass -PkepProjectId=N (your assigned project_id for KEP)")
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
     val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
-    val schemaSource = Paths.get("db-schema.sql")
+    val schemaSource = listOf(
+        Paths.get("loader/db-schema.sql"),
+        Paths.get("db-schema.sql"),
+    ).firstOrNull { java.nio.file.Files.exists(it) }
 
     val keepBaseId = keepProjectId.toLong() * 1_000_000L
     val kepBaseId = kepProjectId.toLong() * 1_000_000L
@@ -42,7 +45,7 @@ fun main() {
 
     val merged = keepRows + kepRows
 
-    SqlWriter(outDir).write(merged, schemaSource = schemaSource.takeIf { java.nio.file.Files.exists(it) })
+    SqlWriter(outDir).write(merged, schemaSource = schemaSource)
 
     log.info(
         "Wrote {} (Project={} Person={} PersonUsername={} Organisation={} Affiliation={} " +

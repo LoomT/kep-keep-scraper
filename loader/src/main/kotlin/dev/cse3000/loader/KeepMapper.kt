@@ -32,6 +32,20 @@ class KeepMapper(
 
         val comments = mapComments(proposalIds)
 
+        val persons = mutableListOf<Person>()
+        val personUsernames = mutableListOf<PersonUsername>()
+        for ((login, id) in personByGHLogin) {
+            persons += Person(personId = id, fullName = null)
+            personUsernames += PersonUsername(personId = id, domain = "github.com", username = login, realName = null)
+        }
+        for ((email, id) in personByEmail) {
+            persons += Person(personId = id, fullName = null)
+            personUsernames += PersonUsername(personId = id, domain = "email", username = email, realName = null)
+        }
+        for ((name, id) in personByName) {
+            persons += Person(personId = id, fullName = name)
+        }
+
         val rows = Rows(
             projects = listOf(
                 Project(
@@ -41,6 +55,8 @@ class KeepMapper(
                     copyright = "Apache-2.0",
                 ),
             ),
+            persons = persons,
+            personUsernames = personUsernames,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
@@ -49,6 +65,11 @@ class KeepMapper(
         )
 
         log.info("Meta keys seen: {}", proposalTextMetaKeysSeen)
+        log.info(
+            "Resolver counts: GH logins={}, emails={}, names={}, total Person rows={}",
+            personByGHLogin.size, personByEmail.size, personByName.size, persons.size,
+        )
+        log.info("Proposal distinct statuses: {}", rows.stageHistory.map { it.status }.distinct())
 
         return rows
     }
@@ -56,23 +77,48 @@ class KeepMapper(
     private fun mapProposals(): List<ProposalGroup> {
         val proposalGroupedCommits = readJsonlObjects(normalizedDir, "keep-proposal-revisions")
             .groupBy { it.getJsonString("path") }
+            .filterNot { it.key.contains("TEMPLATE.md") }
             .map { (path, jsons) ->
                 path to jsons.mapIndexed { index, json ->
+                    val parsed = try {
+                        json.getJsonString("content_text").extractProposalTextMetaData()
+                    } catch (e: Throwable) {
+                        throw AssertionError(
+                            "Failed to parse proposal meta in $path (commit index $index, sha=${
+                                runCatching { json.getJsonString("commit_sha").take(8) }.getOrDefault("?")
+                            }): ${e.message}",
+                            e,
+                        )
+                    }
                     ProposalCommit(
-                        json.getJsonString("content_text").extractProposalTextMetaData(),
+                        parsed,
                         json.getJsonString("committed_at"),
                         index
                     )
                 }
             }
 
-        return proposalGroupedCommits.map { proposalCommits ->
+        return proposalGroupedCommits.mapNotNull { proposalCommits ->
             val proposalId = proposalCommits.first.removePrefix("proposals/").removePrefix("stdlib/").take(9)
-            assert(proposalId.startsWith("KEEP-"))
-            assert(proposalId.removePrefix("KEEP-").all(Char::isDigit))
+            assert(proposalId.startsWith("KEEP-")) {
+                "Proposal id should start with KEEP-, got '$proposalId' for path '${proposalCommits.first}'"
+            }
+            assert(proposalId.removePrefix("KEEP-").all(Char::isDigit)) {
+                "Proposal id should be KEEP-<digits>, got '$proposalId' for path '${proposalCommits.first}'"
+            }
 
             val topics = proposalCommits.second.mapNotNull { it.proposalData.topic }
-            assert(topics.distinct().size > 1) { "Topic should not change in $proposalId, got ${topics.distinct()}" }
+                .ifEmpty {
+                    // decide on general topic based on if it's an stdlib proposal or a regular one
+                    if (proposalCommits.first.contains("proposals/stdlib/KEEP-"))
+                        listOf("Standard Library API proposal")
+                    else
+                        listOf("Design proposal")
+                }
+            assert(topics.distinct().size == 1) {
+                "Topic should not change across revisions in $proposalId, got ${topics.distinct()} (count=${topics.size})"
+            }
+            val topic = topics.distinct().single()
 
             val authorNames = proposalCommits.second.mapNotNull { it.proposalData.author }
             if (authorNames.isEmpty()) log.warn("Author is missing in $proposalId")
@@ -83,7 +129,7 @@ class KeepMapper(
                 projectId,
                 proposalId,
                 proposerId,
-                topics.single(),
+                topic,
             )
 
             val proposalRevisions = proposalCommits.second.map { proposalCommit ->
@@ -171,45 +217,109 @@ class KeepMapper(
         return jsonPrimitive.content
     }
 
+    /**
+     * Reads [key] as a possibly-null JSON string. Returns `null` when the key is
+     * missing, the value is `JsonNull`, or the value is not a string primitive.
+     * Useful for fields like `body` which GitHub may serialize as `null` (e.g., an
+     * issue / comment filed with an empty body).
+     */
+    private fun JsonObject.getJsonStringOrNull(key: String): String? {
+        val element = this[key] ?: return null
+        if (element is JsonNull) return null
+        val prim = element as? JsonPrimitive ?: return null
+        if (!prim.isString) return null
+        return prim.content
+    }
+
     private fun String.extractProposalTextMetaData(): ProposalTextMetaData {
-        val lines = this.lines()
-        val title = lines[0].removePrefix("# ").trim()
+        val nonBlankLines = this.lines().filter { it.isNotBlank() }
+        val title = nonBlankLines[0].removePrefix("# ").trim()
         assert(title.isNotBlank()) { "Title was not found" }
 
-        val proposalTextWithoutMetaData = lines.drop(1).dropWhile { it.startsWith("##") }.joinToString("\n")
+        val proposalTextWithoutMetaData = this.lines()
+            .dropWhile { it.isBlank() }
+            .drop(1)
+            .dropWhile { !it.isLineAfterMetadata() }
+            .joinToString("\n")
 
-        val metaPairs = lines.drop(1)
-            .takeWhile { it.startsWith("##") }
-            .map { it.removePrefix("* ") }
+        val rawMetaLines = nonBlankLines.drop(1).takeWhile { !it.isLineAfterMetadata() }
+        val metaLines = mutableListOf<String>()
+        for (line in rawMetaLines) {
+            if (line.startsWith("* ") || line.startsWith("- ")) {
+                metaLines += line
+            } else if (metaLines.isNotEmpty()) {
+                // Continuation: append, joined with a single space, leading indent stripped.
+                metaLines[metaLines.lastIndex] = metaLines.last().trimEnd() + " " + line.trim()
+            } else {
+                log.warn("Meta line before any bullet entry; ignoring: '{}'", line)
+            }
+        }
+
+        val metaPairs = metaLines
+            .map { it.removePrefix("* ").removePrefix("- ") }
             .map { metaLine ->
-                val key = metaLine.removePrefix("**").takeWhile { it == '*' }.lowercase()
-                val value = metaLine.dropWhile { it == ':' }.trim()
+                // Handle both `**Key**: value` and `**Key:** value` (colon inside the bold).
+                val key = metaLine.removePrefix("**")
+                    .substringBefore(":", missingDelimiterValue = "")
+                    .removeSuffix("**")
+                    .lowercase()
+                    .trim()
+                val value = metaLine.substringAfter(":", missingDelimiterValue = "").trim()
                 val valOrNull = value.ifBlank { null }
                 if (key.contains("discussion")) ("discussion" to valOrNull) else (key to valOrNull)
-            }
+            }.toList()
 
         val keys = metaPairs.map { it.first }
-        val meta = '\n' + this.lines().takeWhile { it.startsWith("##") }.joinToString("\n")
+        val metaWithTitle = "\nTITLE: $title\n" + metaLines.joinToString("\n")
         assert(keys.groupingBy { it }.eachCount().all { it.value == 1 }) {
-            "duplicate keys in $meta"
+            "duplicate keys $keys in $metaWithTitle"
         }
         proposalTextMetaKeysSeen.addAll(keys)
 
         val metaMap = metaPairs.toMap()
 
-        if (metaMap["type"] == null) log.warn("Type field missing in {}", meta)
+        if (metaMap["type"] == null) log.warn("Type field missing in {}", metaWithTitle)
 
         val authors = listOfNotNull(metaMap["author"], metaMap["proposal author"])
         assert(authors.size <= 1)
         val author = authors.singleOrNull()
-        if (author == null) log.warn("Author field missing in {}", meta)
+        if (author == null) log.warn("Author field missing in {}", metaWithTitle)
 
-        assert(metaMap["status"] != null) { "Status field missing in $meta" }
-        val statusWithVersion = metaMap["status"]!!.split("in")
-        val status = statusWithVersion[0].trim()
-        if (status.lowercase() != "superseded")
-            assert(!status.contains(' ')) { "Status was not split properly in $meta" }
-        val implementedAt = statusWithVersion.getOrNull(1)?.trim()
+        if (metaMap["status"] == null) log.warn("Status field missing in {}", metaWithTitle)
+
+        val rawStatus = metaMap["status"] ?: "Unknown"
+        val (status, implementedAt) = when {
+            rawStatus.contains("superseded", ignoreCase = true) -> rawStatus to null
+
+            // Order matters: more specific separators first so we extract the right "post" string
+            // before the generic " in " fallback can match.
+            rawStatus.contains(" since Kotlin ", ignoreCase = true) -> {
+                val (s, rest) = rawStatus.split(" since Kotlin ", ignoreCase = true, limit = 2)
+                s.trim() to extractKotlinVersion(rest)
+            }
+
+            rawStatus.contains(" in Kotlin ", ignoreCase = true) -> {
+                val (s, rest) = rawStatus.split(" in Kotlin ", ignoreCase = true, limit = 2)
+                s.trim() to extractKotlinVersion(rest)
+            }
+
+            rawStatus.contains(" in ", ignoreCase = true) -> {
+                // Older proposals (e.g. KEEP-4) cram a free-form sentence after the version into
+                // the same Status line: "Stable in 1.1 Discussion of this proposal is held in ...".
+                // Split only at the first " in " (limit=2) and then extract just the version
+                // prefix from the second piece, so implementedAt is always a valid Kotlin
+                // version (or null) rather than a leftover sentence.
+                val (s, rest) = rawStatus.split(" in ", ignoreCase = true, limit = 2)
+                s.trim() to extractKotlinVersion(rest)
+            }
+
+            rawStatus.contains(" since ", ignoreCase = true) -> {
+                val (s, rest) = rawStatus.split(" since ", ignoreCase = true, limit = 2)
+                s.trim() to extractKotlinVersion(rest)
+            }
+
+            else -> rawStatus to null
+        }
 
         return ProposalTextMetaData(
             proposalTextWithoutMetaData,
@@ -217,10 +327,28 @@ class KeepMapper(
             metaMap["type"],
             author,
             metaMap["contributors"] ?: metaMap["proposal contributors"],
-            status,
+            status.lowercase(),
             implementedAt,
             metaMap["discussion"]
         )
+    }
+
+    private fun String.isLineAfterMetadata(): Boolean = this.startsWith("#")
+            || this.startsWith(">")
+            || this.startsWith("**Table of contents**", ignoreCase = true)
+
+    /**
+     * Extracts the leading Kotlin-version-shaped token from [text] (e.g. "1.1",
+     * "1.4.0", "2.0.0-Beta", "2.1.20-RC2"). Returns null if [text] does not
+     * start with such a token. Anything after the version (e.g. extraneous
+     * prose accidentally pasted into the Status field) is discarded.
+     */
+    private fun extractKotlinVersion(text: String): String? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+        // Major(.Minor(.Patch)*) optionally followed by a -Pre / -RC / -Beta-N tag.
+        val match = Regex("""^(\d+(?:\.\d+)+(?:[-+][\w.\-]+)?|\d+)\b""").find(trimmed) ?: return null
+        return match.value
     }
 
     private fun mapComments(proposalIds: Set<Int>): List<Comment> {
@@ -236,19 +364,28 @@ class KeepMapper(
         val discussionThreads = readJsonlObjects(normalizedDir, "keep-discussions")
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
             .filter { it["category"]!!.jsonObject.getJsonString("name") == "keep-discussions" }
-            .map {
-                val content = it.getJsonString("body")
+            .mapNotNull {
+                val content = it.getJsonStringOrNull("body").orEmpty()
                 val proposalId = content.extractProposalIdFromDiscussionContent()
+                if (proposalId == null) {
+                    val number = it["number"]?.jsonPrimitive?.intOrNull
+                    log.warn(
+                        "Skipping discussion #{}: body does not contain a https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-... link",
+                        number,
+                    )
+                    return@mapNotNull null
+                }
                 DiscussionThread(
                     proposalId,
                     commentIds.nextId(),
                     it["number"]!!.jsonPrimitive.int,
                     it.getJsonString("title"),
-                    it.getJsonString("body"),
+                    it.getJsonStringOrNull("body").orEmpty(),
                     it["author"]!!.jsonObject.getJsonString("login"),
                     it.getJsonString("createdAt"),
                 )
             }
+            .toList()
 
         val discussionComments = discussionThreads.flatMap { discussionThread ->
             discussionCommentJsons.filter { discussionComment ->
@@ -263,7 +400,7 @@ class KeepMapper(
                     proposalId,
                     discussionThread.commentId,
                     discussionCommentJson.getJsonString("createdAt"),
-                    discussionCommentJson.getJsonString("body"),
+                    discussionCommentJson.getJsonStringOrNull("body").orEmpty(),
                 )
 
                 discussionCommentJson["replies"]!!.jsonObject["nodes"]!!.jsonArray
@@ -277,7 +414,7 @@ class KeepMapper(
                             proposalId,
                             previous.commentId,
                             replyJson.getJsonString("createdAt"),
-                            replyJson.getJsonString("body"),
+                            replyJson.getJsonStringOrNull("body").orEmpty(),
                         )
                     }
             }
@@ -306,13 +443,17 @@ class KeepMapper(
         val createdAt: String,
     )
 
-    private fun String.extractProposalIdFromDiscussionContent(): String {
-        //[here](https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0440-bcv-to-kgp.md)
-        assert(this.contains("https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-")) {
-            "Discussion does not link to a KEEP"
-        }
-        return this.substringAfter("https://github.com/Kotlin/KEEP/blob/main/proposals/").take(9)
+    /**
+     * Tries to find a `https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-NNNN-...md` URL in
+     * the discussion body and returns the `KEEP-NNNN` prefix. Returns null if no such link is
+     * present (some discussions in the `keep-discussions` category don't follow the convention).
+     */
+    private fun String.extractProposalIdFromDiscussionContent(): String? {
+        val mentionedProposals = PROPOSAL_URL_REGEX.find(this)?.groupValues ?: return null
+        assert(mentionedProposals.size == 2) { "Unexpected number of matches: $mentionedProposals" }
+        return mentionedProposals[1]
     }
+
 
     private fun mapIssueComments(proposalIds: Set<Int>): List<Comment> {
         val prIssueCommentIssueNumber = readJsonlObjects(normalizedDir, "keep-pr-issuecomments")
@@ -320,17 +461,17 @@ class KeepMapper(
             .distinct()
 
         val issueToIssueComments = readJsonlObjects(normalizedDir, "keep-issue-comments")
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.int }
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }   // GitHub comment IDs exceed Int range
             .groupBy { it.getJsonString("_issue").toInt() }
 
         return readJsonlObjects(normalizedDir, "keep-issues")
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.int }
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }   // GitHub issue IDs exceed Int range
             .filter {
                 it["number"]!!.jsonPrimitive.int in proposalIds
             }.flatMap { issue ->
                 val issueNumber = issue["number"]!!.jsonPrimitive.int
                 val proposalId = "KEEP-" + issueNumber.toString().padStart(4, '0')
-                val rootContent = issue.getJsonString("body")
+                val rootContent = issue.getJsonStringOrNull("body").orEmpty()
                 val rootCreatedAt = issue.getJsonString("created_at")
                 val rootLogin = issue["user"]!!.jsonObject.getJsonString("login")
                 val rootAuthorId = resolveGHLogin(rootLogin)
@@ -350,9 +491,6 @@ class KeepMapper(
 
                 val issueComments = issueToIssueComments[issueNumber] ?: emptyList()
 
-                val commentIdBuffer =
-                    listOf(rootComment.commentId) + (0..issueComments.size).map { commentIds.nextId() }
-
                 issueComments.sortedBy { it.getJsonString("created_at") }
                     .runningFold(rootComment) { previous, commentJson ->
                         val login = commentJson["user"]!!.jsonObject.getJsonString("login")
@@ -363,10 +501,17 @@ class KeepMapper(
                             proposalId = proposalId,
                             commentOnCommentId = previous.commentId,
                             createdAt = commentJson.getJsonString("created_at"),
-                            content = commentJson.getJsonString("body"),
+                            content = commentJson.getJsonStringOrNull("body").orEmpty(),
                         )
                     }
 
             }.toList()
+    }
+
+    companion object {
+        private const val PROPOSALS_URL_PREFIX =
+            "https://github.com/Kotlin/KEEP/blob/main/proposals/"
+        private val PROPOSAL_URL_REGEX =
+            Regex("""${Regex.escape(PROPOSALS_URL_PREFIX)}(?:stdlib/)?(KEEP-\d{4})""")
     }
 }
