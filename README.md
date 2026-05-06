@@ -56,13 +56,13 @@ phase since it's only meaningful for KEEP/KEP layouts.
 
 Arguments:
 
-| Flag                  | Default                | Notes                                                                                |
-|-----------------------|------------------------|--------------------------------------------------------------------------------------|
-| `--repo=owner/name`   | (required)             | Target repository.                                                                   |
-| `--mode=full\|update` | `update`               | `full` ignores cursors; `update` resumes from last sync.                             |
-| `--limit=N`           | unlimited              | Process at most N top-level items per phase. Useful for smoke tests.                 |
-| `--include=p1,p2,...` | all minus proposals    | Phases: `repo-info`, `issues`, `prs`, `discussions`. Passing `proposals` errors out. |
-| `--dataDir=PATH`      | `data/<owner>/<name>/` | Where to write cache, normalized JSONL, manifests, and the local git mirror.         |
+| Flag                  | Default                | Notes                                                                                           |
+|-----------------------|------------------------|-------------------------------------------------------------------------------------------------|
+| `--repo=owner/name`   | (required)             | Target repository.                                                                              |
+| `--mode=full\|update` | `update`               | `full` ignores cursors; `update` resumes from last sync.                                        |
+| `--limit=N`           | unlimited              | Process at most N top-level items per phase. Useful for smoke tests.                            |
+| `--include=p1,p2,...` | all minus proposals    | Phases: `repo-info`, `issues`, `prs`, `discussions`, `commits`. Passing `proposals` errors out. |
+| `--dataDir=PATH`      | `data/<owner>/<name>/` | Where to write cache, normalized JSONL, manifests, and the local git mirror.                    |
 
 ### Phase filtering on the named scrapers
 
@@ -70,9 +70,17 @@ Arguments:
 
 - `repo-info` — one-shot fetch of `/repos/{slug}` metadata.
 - `issues` — issues + comments + timeline events.
-- `prs` — PRs + reviews + review-comments + commits + files + timeline.
+- `prs` — PRs + reviews + review-comments + commits-of-the-PR + files + timeline.
 - `discussions` — GitHub Discussions tab (KEEP only — no-op on KEP).
 - `proposals` — full revision history of proposal files (KEEP markdown / KEP yaml + README) via a local bare git mirror.
+- `commits` — repo-wide commit history via the GitHub REST API. **Crucially carries
+  `author.login` / `committer.login`** (the GitHub user mapped from the git author
+  email) — that's the bit the local-git `proposals` walker can't see.
+  - For the named scrapers (`:keep:run`, `:kep:run`), this phase is automatically
+    narrowed to commits that touched proposal files (one `?path=` query per file,
+    paths discovered from the local mirror — so this implies cloning the mirror).
+  - For the generic scraper (`:scraper:run`), no path filter; the entire repo's
+    history is fetched. Skip this phase on huge repos unless you need it.
 
 All three CLIs (`:scraper:run`, `:keep:run`, `:kep:run`) share the same flag
 syntax — `--mode=`, `--limit=`, `--include=`, `--dataDir=` — none of them are

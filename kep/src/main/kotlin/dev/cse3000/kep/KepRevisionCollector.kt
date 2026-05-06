@@ -9,15 +9,6 @@ import org.slf4j.LoggerFactory
 class KepRevisionCollector(private val ctx: ScrapeContext) {
     private val log = LoggerFactory.getLogger(KepRevisionCollector::class.java)
 
-    private fun isKepFile(path: String): Boolean {
-        if (!path.startsWith("keps/")) return false
-        val segments = path.split('/')
-        // Want exactly keps/{sig}/{kep-name}/{file}
-        if (segments.size != 4) return false
-        val filename = segments[3]
-        return filename == "kep.yaml" || filename == "README.md"
-    }
-
     suspend fun run() {
         RepoMirror(KepScraper.OWNER, KepScraper.REPO, ctx.reposDir).use { mirror ->
             mirror.ensureUpToDate()

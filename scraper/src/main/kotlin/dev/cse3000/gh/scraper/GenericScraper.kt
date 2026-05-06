@@ -53,6 +53,21 @@ class GenericScraper(
             if (ScrapePhase.DISCUSSIONS in phases) {
                 launch { DiscussionsCollector(ctx, owner, repo, tag).run(incremental, limit) }
             }
+            if (ScrapePhase.COMMITS in phases) {
+                // Generic = full repo, no path filter. Named scrapers override this with
+                // their own per-path commits collector.
+                launch {
+                    CommitsCollector(
+                        client = ctx.client,
+                        sink = ctx.sink,
+                        cursor = ctx.cursor,
+                        owner = owner,
+                        repo = repo,
+                        repoTag = tag,
+                        pathFilter = null,
+                    ).run(incremental, limit)
+                }
+            }
         }
     }
 }

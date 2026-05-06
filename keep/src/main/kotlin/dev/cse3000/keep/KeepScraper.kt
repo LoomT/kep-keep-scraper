@@ -22,12 +22,18 @@ class KeepScraper(private val ctx: ScrapeContext) {
             OWNER, REPO, incremental, limit, phases.map { it.cli },
         )
         coroutineScope {
-            val commonPhases = phases - ScrapePhase.PROPOSALS
-            if (commonPhases.isNotEmpty()) {
-                launch { GenericScraper(ctx, OWNER, REPO, TAG).run(incremental, limit, commonPhases) }
+            // Delegate everything except proposals + commits to GenericScraper. We override
+            // commits with KEEP-specific per-path filtering so we only fetch commits that
+            // touched proposal markdown files.
+            val genericPhases = phases - ScrapePhase.PROPOSALS - ScrapePhase.COMMITS
+            if (genericPhases.isNotEmpty()) {
+                launch { GenericScraper(ctx, OWNER, REPO, TAG).run(incremental, limit, genericPhases) }
             }
             if (ScrapePhase.PROPOSALS in phases) {
                 launch { KeepRevisionCollector(ctx).run() }
+            }
+            if (ScrapePhase.COMMITS in phases) {
+                launch { KeepCommitsCollector(ctx).run(incremental, limit) }
             }
         }
     }
