@@ -5,12 +5,13 @@
 [versions]
 kotlin = "2.3.20"
 kotlinxDatetime = "0.7.1"
-kotlinxSerializationJSON = "1.9.0"
+kotlinxSerializationJSON = "1.11.0"
 kotlinxCoroutines = "1.10.2"
-ktor = "3.0.3"
-slf4j = "2.0.13"
-logback = "1.5.13"
+ktor = "3.4.3"
+slf4j = "2.0.17"
+logback = "1.5.32"
 jgit = "7.6.0.202603022253-r"
+sqliteJdbc = "3.53.0.0"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -29,6 +30,7 @@ slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+sqliteJdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 
 # Libraries can be bundled together for easier import
 [bundles]

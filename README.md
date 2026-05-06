@@ -211,6 +211,77 @@ next run picks up at the last fully-processed item. ETag-cached URLs return
 304 immediately for everything unchanged since the last successful fetch —
 the manifest's `requests_304` count tells you how many.
 
+## Sharing data with collaborators
+
+This scraper feeds into a **shared SQLite database**.
+
+### One-shot push
+
+The `:loader` module produces `data.sql` from the local `data/normalized/*.jsonl`
+streams and emits `apply.sh` / `apply.bat` helpers. The push is **one-shot**:
+re-applying the same SQL to a database that already contains your project_ids'
+rows will fail on PRIMARY KEY violations.
+
+```sh
+# 1. Scrape (run scrapers to completion)
+./gradlew :keep:run
+./gradlew :kep:run
+
+# 2. Generate SQL (replace 3 / 4 with your assigned project ids)
+./gradlew :loader:run -PkeepProjectId=3 -PkepProjectId=4
+
+# 3. Apply to the sibling repo's committed proposals.db
+cd ~/projects/proposals-db && git pull
+bash ~/projects/this-repo/loader/build/export/keep-kep/apply.sh ./proposals.db
+
+# 4. Commit + push the modified .db
+git add proposals.db
+git commit -m "[keep-kep] one-shot import"
+git push
+```
+
+`:loader:run` writes:
+
+```
+loader/build/export/keep-kep/
+  schema.txt        # snapshot of db-schema.txt (sanity check vs the live .db)
+  data.sql          # all INSERTs in FK-dependency order, single transaction
+  apply.sh          # bash apply.sh path/to/proposals.db
+  apply.bat         # Windows equivalent
+```
+
+`person_id` / `organisation_id` / `comment_id` values are allocated locally in
+the half-open range `[smallestProjectId × 1_000_000, +1_000_000)` so they can't
+collide with other contributors' allocations. Person dedup across projects is
+deferred to `:rq3` post-processing, e.g., the same GitHub user appearing in two
+contributors' data will be two separate `Person` rows after both pushes.
+
+### Pull and analyse in `:rq3`
+
+```sh
+# 1. Pull the latest sibling repo
+cd ~/projects/proposals-db && git pull
+
+# 2. Sync the shared db into this repo's :rq3 module
+cd ~/projects/this-repo
+./gradlew :rq3:syncSharedDb -PsharedDbPath=../../proposals-db/proposals.db
+
+# 3. Run analyses (initially: print sanity row counts per table)
+./gradlew :rq3:run
+```
+
+`syncSharedDb` copies the .db into `rq3/data/shared/proposals.db` (gitignored).
+`:rq3:run` opens it via `sqlite-jdbc`. You can also point `:rq3` at the
+sibling-repo checkout directly without copying via
+`-PsharedDbPath=path/to/proposals.db` on `:rq3:run`.
+
+### Schema is `db-schema.txt`
+
+The collaborative schema lives in `db-schema.txt` at the repo root. The loader's
+`SchemaModel.kt` data classes mirror it; if the schema changes, update both
+together. The loader's per-stream → SQL mapping (`KeepMapper.kt` / `KepMapper.kt`)
+is TBD
+
 ## Build
 
 ```sh

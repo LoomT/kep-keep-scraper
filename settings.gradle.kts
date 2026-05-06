@@ -16,6 +16,7 @@ plugins {
 include(":scraper")
 include(":keep")
 include(":kep")
+include(":loader")
 include(":rq3")
 
 rootProject.name = "CSE3000_RQ3-KEEP-KEP"
