@@ -8,7 +8,10 @@ import java.sql.DriverManager
 
 /**
  * Opens the synced shared SQLite database. Default location is
- * `rq3/data/shared/proposals.db` (populated by `:rq3:syncSharedDb`).
+ * `<repo-root>/data/shared/proposals.db` (populated by `:rq3:syncSharedDb`).
+ * The `:rq3:run` task is configured to use the repo root as its working
+ * directory so that the relative `data/shared/proposals.db` resolves to
+ * the unified data dir shared by all the scrapers.
  *
  * Override at runtime with `-PsharedDbPath=...` (forwarded to the JVM as
  * `-DsharedDbPath=...`) — useful for analyses that want to point straight at
@@ -18,8 +21,7 @@ object SharedDb {
     fun resolvePath(): Path {
         val override = System.getProperty("sharedDbPath")?.takeIf { it.isNotBlank() }
         if (override != null) return Paths.get(override).toAbsolutePath()
-        return Paths.get("rq3", "data", "shared", "proposals.db").toAbsolutePath()
-            .let { if (Files.exists(it)) it else Paths.get("data", "shared", "proposals.db").toAbsolutePath() }
+        return Paths.get("data", "shared", "proposals.db").toAbsolutePath()
     }
 
     fun open(path: Path = resolvePath()): Connection {

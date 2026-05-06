@@ -36,7 +36,9 @@ tasks.register("syncSharedDb") {
             )
         val srcPath = Paths.get(src).toAbsolutePath()
         require(Files.exists(srcPath)) { "sharedDbPath does not exist: $srcPath" }
-        val targetDir = layout.projectDirectory.dir("data/shared").asFile.toPath()
+        // Mirror the unified <root>/data/ convention used by the scrapers: write to root/data/shared
+        // so any task whose workingDir is rootProject.projectDir can pick it up via "data/shared/proposals.db".
+        val targetDir = rootProject.projectDir.toPath().resolve("data/shared")
         Files.createDirectories(targetDir)
         val target = targetDir.resolve("proposals.db")
         Files.copy(srcPath, target, StandardCopyOption.REPLACE_EXISTING)

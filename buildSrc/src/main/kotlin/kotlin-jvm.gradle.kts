@@ -2,6 +2,7 @@
 // `buildSrc` is a Gradle-recognized directory and every plugin there will be easily available in the rest of the build.
 package buildsrc.convention
 
+import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
@@ -26,4 +27,12 @@ tasks.withType<Test>().configureEach {
             TestLogEvent.SKIPPED
         )
     }
+}
+
+// Run all `JavaExec`-based tasks (application plugin's `run`, plus our custom `runFull` / `runUpdate` /
+// `runUsers`) with the repo root as their working directory. That way every scraper's relative
+// `data/` path (Env.dataDir() and the rq3 sync target) resolves to a single shared `<root>/data/`
+// instead of `<module>/data/`, and the loader can read everything from one place without a copy step.
+tasks.withType<JavaExec>().configureEach {
+    workingDir = rootProject.projectDir
 }

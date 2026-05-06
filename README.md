@@ -112,7 +112,37 @@ Output: `<dataDir>/normalized/users.jsonl` — one row per user (the raw
 
 ### Where the data goes
 
-The scrapers default to `data/` at their module root (gitignored). Layout per scraper:
+All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the users scraper, the
+loader, and `:rq3`) are pinned to **`<repo-root>` as their JVM working directory**
+via the convention plugin. That means every relative `data/` reference resolves
+to a single shared `<repo-root>/data/` (gitignored), so:
+
+- `:keep:run` writes to `<root>/data/normalized/keep-*.jsonl`.
+- `:kep:run` writes to `<root>/data/normalized/kep-*.jsonl`.
+- `:scraper:runUsers` writes to `<root>/data/normalized/users.jsonl`.
+- `:scraper:run --repo=foo/bar` still gets its own subdir at
+  `<root>/data/foo/bar/...` (per-repo isolation, derived from `--repo`).
+- `:loader:run` reads `<root>/data/normalized/*.jsonl` — no copy step needed.
+- `:rq3:syncSharedDb` writes to `<root>/data/shared/proposals.db`; `:rq3:run`
+  reads from there.
+
+The cache (`data/cache/`) is keyed by URL (raw cache + ETags) and by qualified
+keys like `keep.issues.updated_at` / `kep.issues.updated_at` (sync cursor) /
+`Kotlin/KEEP` (git cursor), so KEEP and KEP coexist in the same cache without
+collisions.
+
+If you previously ran the scrapers and have data under `keep/data/` / `kep/data/`
+/ `data/users/` from before this layout change, consolidate once:
+
+```sh
+mkdir -p data
+# Unix
+rsync -a keep/data/ data/ && rm -rf keep/data
+rsync -a kep/data/  data/ && rm -rf kep/data
+rsync -a data/users/normalized/ data/normalized/ && rm -rf data/users
+```
+
+Layout under the unified `data/`:
 
 ```
 data/

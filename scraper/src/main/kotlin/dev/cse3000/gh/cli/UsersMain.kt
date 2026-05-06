@@ -20,10 +20,12 @@ fun main(): Unit = runBlocking {
     val limit = System.getProperty("limit")?.toIntOrNull()?.also {
         require(it > 0) { "limit must be a positive integer" }
     }
+    // Default to the unified <repo-root>/data so users.jsonl ends up alongside keep-*.jsonl /
+    // kep-*.jsonl in `<root>/data/normalized/`, which is what the loader reads from.
     val dataDir: Path = System.getProperty("dataDir")
         ?.takeIf { it.isNotBlank() }
         ?.let { Paths.get(it).toAbsolutePath() }
-        ?: Paths.get("data", "users").toAbsolutePath()
+        ?: Paths.get("data").toAbsolutePath()
 
     val logins = readLogins(inputPath)
     log.info("Loaded {} distinct logins from {}", logins.size, inputPath)
