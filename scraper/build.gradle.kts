@@ -26,6 +26,17 @@ tasks.register<JavaExec>("runFull") {
     args = listOf("--mode=full")
 }
 
+tasks.register<JavaExec>("runUsers") {
+    group = "scraping"
+    description =
+        "Fetch GitHub user metadata for a list of logins. Use -Pinput=path/to/logins.txt [-PdataDir=...] [-Plimit=N] [-Pmode=full|update]."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.cse3000.gh.cli.UsersMainKt")
+    listOf("input", "dataDir", "limit", "mode").forEach { name ->
+        project.findProperty(name)?.let { systemProperty(name, it.toString()) }
+    }
+}
+
 tasks.register<JavaExec>("runUpdate") {
     group = "scraping"
     description = "Run an incremental scrape against an arbitrary GitHub repo (requires --args=\"--repo=owner/name\")."

@@ -92,6 +92,26 @@ positional. The generic scraper additionally requires `--repo=`.
 ./gradlew :keep:run --args="--mode=update --dataDir=/tmp/keep-scrape"
 ```
 
+### Scraping user metadata for a manually-supplied login list
+
+Once you have a list of GitHub logins (e.g., emitted by `:loader` from
+`PersonUsername` rows, or assembled by hand), you can fetch full account
+metadata — `name`, `company`, `location`, `bio`, `public_repos`, `followers`,
+account creation timestamp, etc. — via `GET /users/{login}`:
+
+```sh
+./gradlew :scraper:runUsers -Pinput=path/to/logins.txt
+```
+
+Input file: one GitHub login per line, blank lines and lines starting with
+`#` are ignored. Optional Gradle properties: `-PdataDir=...` (default
+`data/users/`, isolated from the per-repo scrape caches), `-Plimit=N` for
+smoke tests, `-Pmode=full|update` (default `update`).
+
+Output: `<dataDir>/normalized/users.jsonl` — one row per user (the raw
+`/users/{login}` response, plus `_login` and `_scraped_at` meta). 404
+(deleted/renamed accounts) are logged at WARN and skipped — not fatal.
+
 ### Where the data goes
 
 The scrapers default to `data/` at their module root (gitignored). Layout per scraper:
