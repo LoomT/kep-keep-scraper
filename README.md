@@ -49,9 +49,7 @@ phase since it's only meaningful for KEEP/KEP layouts.
 
 ```sh
 ./gradlew :scraper:run --args="--repo=spring-projects/spring-boot --mode=full"
-./gradlew :scraper:run --args="--repo=JetBrains/kotlin --mode=update --limit=20"
-./gradlew :scraper:runFull --args="--repo=denoland/deno"
-./gradlew :scraper:runUpdate --args="--repo=denoland/deno --include=issues,prs"
+./gradlew :scraper:run --args="--repo=JetBrains/kotlin --mode=update --include=issues,prs --limit=20"
 ```
 
 Arguments:
