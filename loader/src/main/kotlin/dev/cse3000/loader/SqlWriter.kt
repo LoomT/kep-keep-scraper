@@ -20,11 +20,11 @@ class SqlWriter(private val outDir: Path) {
         Files.createDirectories(outDir)
 
         // Schema snapshot
-        val schemaTarget = outDir.resolve("schema.txt")
+        val schemaTarget = outDir.resolve("schema.sql")
         if (schemaSource != null && Files.exists(schemaSource)) {
             Files.copy(schemaSource, schemaTarget, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         } else {
-            Files.writeString(schemaTarget, "-- db-schema.txt not found at loader run time\n")
+            Files.writeString(schemaTarget, "-- db-schema.sql not found at loader run time\n")
         }
 
         // data.sql

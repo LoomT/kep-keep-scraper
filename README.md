@@ -272,7 +272,7 @@ git push
 
 ```
 loader/build/export/keep-kep/
-  schema.txt        # snapshot of db-schema.txt (sanity check vs the live .db)
+  schema.txt        # snapshot of db-schema.sql (sanity check vs the live .db)
   data.sql          # all INSERTs in FK-dependency order, single transaction
   apply.sh          # bash apply.sh path/to/proposals.db
   apply.bat         # Windows equivalent
@@ -303,9 +303,9 @@ cd ~/projects/this-repo
 sibling-repo checkout directly without copying via
 `-PsharedDbPath=path/to/proposals.db` on `:rq3:run`.
 
-### Schema is `db-schema.txt`
+### Schema is `db-schema.sql`
 
-The collaborative schema lives in `db-schema.txt` at the repo root. The loader's
+The collaborative schema lives in `db-schema.sql` at the repo root. The loader's
 `SchemaModel.kt` data classes mirror it; if the schema changes, update both
 together. The loader's per-stream → SQL mapping (`KeepMapper.kt` / `KepMapper.kt`)
 is TBD

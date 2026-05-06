@@ -12,8 +12,8 @@ fun main() {
     val kepProjectId = sysIntProp("kepProjectId")
         ?: error("Pass -PkepProjectId=N (your assigned project_id for KEP)")
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
-    val outDir: Path = Paths.get(System.getProperty("out") ?: "loader/build/export/keep-kep")
-    val schemaSource = Paths.get("db-schema.txt")
+    val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
+    val schemaSource = Paths.get("db-schema.sql")
 
     val keepBaseId = keepProjectId.toLong() * 1_000_000L
     val kepBaseId = kepProjectId.toLong() * 1_000_000L
@@ -29,7 +29,7 @@ fun main() {
         normalizedDir = normalizedDir,
         personIds = IdAllocator(keepBaseId),
         organisationIds = IdAllocator(keepBaseId),
-        commentIds = IdAllocator(keepBaseId),
+        commentIds = IdAllocator(0),
     ).mapAll()
 
     val kepRows = KepMapper(
@@ -37,7 +37,7 @@ fun main() {
         normalizedDir = normalizedDir,
         personIds = IdAllocator(kepBaseId),
         organisationIds = IdAllocator(kepBaseId),
-        commentIds = IdAllocator(kepBaseId),
+        commentIds = IdAllocator(0),
     ).mapAll()
 
     val merged = keepRows + kepRows

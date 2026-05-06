@@ -1,7 +1,7 @@
 package dev.cse3000.loader
 
 /**
- * Data classes mirroring `db-schema.txt`. Field order here matches the column
+ * Data classes mirroring `db-schema.sql`. Field order here matches the column
  * order in [SqlWriter] so adding a field is one of "two" places to update.
  */
 data class Project(
@@ -38,7 +38,7 @@ data class Proposal(
     val proposalId: String,
     val proposerId: Long?,
     val topic: String?,
-    val proposalType: String?,
+    val proposalType: String? = null,
 )
 
 data class ProposalRevision(
@@ -55,7 +55,7 @@ data class ProposalRevisionAuthor(
     val projectId: Int,
     val proposalId: String,
     val revisionIndex: Int,
-    val authorId: Long,
+    val authorId: Long?,
 )
 
 data class StageHistory(
