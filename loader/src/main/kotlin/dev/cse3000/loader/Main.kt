@@ -14,8 +14,8 @@ fun main() {
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
     val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
     val schemaSource = listOf(
-        Paths.get("loader/db-schema.sql"),
         Paths.get("db-schema.sql"),
+        Paths.get("loader/db-schema.sql"),
     ).firstOrNull { java.nio.file.Files.exists(it) }
 
     val keepBaseId = keepProjectId.toLong() * 1_000_000L
@@ -32,7 +32,7 @@ fun main() {
         normalizedDir = normalizedDir,
         personIds = IdAllocator(keepBaseId),
         organisationIds = IdAllocator(keepBaseId),
-        commentIds = IdAllocator(0),
+        commentIds = IdAllocator(keepBaseId),
     ).mapAll()
 
     val kepRows = KepMapper(
@@ -40,7 +40,7 @@ fun main() {
         normalizedDir = normalizedDir,
         personIds = IdAllocator(kepBaseId),
         organisationIds = IdAllocator(kepBaseId),
-        commentIds = IdAllocator(0),
+        commentIds = IdAllocator(kepBaseId),
     ).mapAll()
 
     val merged = keepRows + kepRows

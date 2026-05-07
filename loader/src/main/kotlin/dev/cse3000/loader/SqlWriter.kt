@@ -125,8 +125,8 @@ class SqlWriter(private val outDir: Path) {
         appendLine("-- Proposal (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO Proposal(project_id, proposal_id, proposer_id, topic, proposal_type) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.proposerId)}, ${e(it.topic)}, ${e(it.proposalType)});",
+                "INSERT INTO Proposal(project_id, proposal_id, topic, proposal_type) " +
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.topic)}, ${e(it.proposalType)});",
             )
         }
         appendLine()
@@ -165,8 +165,12 @@ class SqlWriter(private val outDir: Path) {
         appendLine("-- StageHistory (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO StageHistory(project_id, proposal_id, status_index, status, created_at) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, ${e(it.status)}, ${e(it.createdAt)});",
+                "INSERT INTO StageHistory(project_id, proposal_id, status_index, normalized_status, raw_status, created_at) " +
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, ${e(it.normalizedStatus)}, ${
+                            e(
+                                it.rawStatus
+                            )
+                        }, ${e(it.createdAt)});",
             )
         }
         appendLine()
@@ -177,8 +181,12 @@ class SqlWriter(private val outDir: Path) {
         appendLine("-- RelatedProposal (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO RelatedProposal(project_id, proposal_id, related_project_id, related_proposal_id) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.relatedProjectId)}, ${e(it.relatedProposalId)});",
+                "INSERT INTO RelatedProposal(project_id, proposal_id, related_project_id, related_proposal_id, type) " +
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.relatedProjectId)}, ${e(it.relatedProposalId)}, ${
+                            e(
+                                it.type
+                            )
+                        });",
             )
         }
         appendLine()

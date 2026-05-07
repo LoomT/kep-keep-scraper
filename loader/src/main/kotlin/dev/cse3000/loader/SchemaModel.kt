@@ -36,7 +36,6 @@ data class Affiliation(
 data class Proposal(
     val projectId: Int,
     val proposalId: String,
-    val proposerId: Long?,
     val topic: String?,
     val proposalType: String? = null,
 )
@@ -55,14 +54,15 @@ data class ProposalRevisionAuthor(
     val projectId: Int,
     val proposalId: String,
     val revisionIndex: Int,
-    val authorId: Long?,
+    val authorId: Long,
 )
 
 data class StageHistory(
     val projectId: Int,
     val proposalId: String,
     val stageIndex: Int,
-    val status: String,
+    val normalizedStatus: String,
+    val rawStatus: String,
     val createdAt: String,           // ISO-8601
 )
 
@@ -71,6 +71,7 @@ data class RelatedProposal(
     val proposalId: String,
     val relatedProjectId: Int,
     val relatedProposalId: String,
+    val type: String,
 )
 
 data class Comment(
