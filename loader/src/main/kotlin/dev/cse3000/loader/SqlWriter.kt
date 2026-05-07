@@ -138,11 +138,8 @@ class SqlWriter(private val outDir: Path) {
         for (it in items) {
             appendLine(
                 "INSERT INTO ProposalRevision(project_id, proposal_id, revision_index, title, created_at, content, implemented_at_version) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.revisionIndex)}, ${e(it.title)}, ${e(it.createdAt)}, ${
-                            e(
-                                it.content
-                            )
-                        }, ${e(it.implementedAtVersion)});",
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.revisionIndex)}, " +
+                        "${e(it.title)}, ${e(it.createdAt)}, ${e(it.content)}, ${e(it.implementedAtVersion)});",
             )
         }
         appendLine()
@@ -166,11 +163,8 @@ class SqlWriter(private val outDir: Path) {
         for (it in items) {
             appendLine(
                 "INSERT INTO StageHistory(project_id, proposal_id, status_index, normalized_status, raw_status, created_at) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, ${e(it.normalizedStatus)}, ${
-                            e(
-                                it.rawStatus
-                            )
-                        }, ${e(it.createdAt)});",
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, " +
+                        "${e(it.normalizedStatus)}, ${e(it.rawStatus)}, ${e(it.createdAt)});",
             )
         }
         appendLine()
@@ -182,11 +176,8 @@ class SqlWriter(private val outDir: Path) {
         for (it in items) {
             appendLine(
                 "INSERT INTO RelatedProposal(project_id, proposal_id, related_project_id, related_proposal_id, type) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.relatedProjectId)}, ${e(it.relatedProposalId)}, ${
-                            e(
-                                it.type
-                            )
-                        });",
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.relatedProjectId)}, " +
+                        "${e(it.relatedProposalId)}, ${e(it.type)});",
             )
         }
         appendLine()
@@ -198,11 +189,9 @@ class SqlWriter(private val outDir: Path) {
         for (it in items) {
             appendLine(
                 "INSERT INTO Comment(comment_id, author_id, project_id, proposal_id, comment_on_comment_id, created_at, content) " +
-                        "VALUES (${e(it.commentId)}, ${e(it.authorId)}, ${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.commentOnCommentId)}, ${
-                            e(
-                                it.createdAt
-                            )
-                        }, ${e(it.content)});",
+                        "VALUES (${e(it.commentId)}, ${e(it.authorId)}, ${e(it.projectId)}, " +
+                        "${e(it.proposalId)}, ${e(it.commentOnCommentId)}, ${e(it.createdAt)}, " +
+                        "${e(it.content)});",
             )
         }
         appendLine()

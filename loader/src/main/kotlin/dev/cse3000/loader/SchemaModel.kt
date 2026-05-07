@@ -62,7 +62,7 @@ data class StageHistory(
     val proposalId: String,
     val stageIndex: Int,
     val normalizedStatus: String,
-    val rawStatus: String,
+    val rawStatus: String?,
     val createdAt: String,           // ISO-8601
 )
 
