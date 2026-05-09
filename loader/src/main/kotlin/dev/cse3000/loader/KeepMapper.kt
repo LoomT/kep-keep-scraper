@@ -31,7 +31,10 @@ class KeepMapper(
         val proposalIntIds = proposals.map { it.proposalId.toInt() }.toSet()
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
-        val comments = mapComments(proposalIntIds)
+        val discussionToProposalMap = proposalGroups
+            .mapNotNull { group -> group.discussionId?.let { it to group.proposal.proposalId } }
+            .toMap()
+        val comments = mapComments(proposalIntIds, discussionToProposalMap)
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
         val (validRelated, danglingRelated) = rawRelated.partition { it.proposalId in proposalIds }
@@ -89,6 +92,18 @@ class KeepMapper(
         return rows
     }
 
+    private fun String.proposalPathToId(): String {
+        val pathName = this.removePrefix("proposals/").removePrefix("stdlib/").take(9)
+        assert(pathName.startsWith("KEEP-")) {
+            "Proposal path name should start with KEEP-, got '$pathName' for path '${this}'"
+        }
+        val proposalId = pathName.removePrefix("KEEP-")
+        assert(proposalId.all(Char::isDigit)) {
+            "Proposal id should be 4 digits after KEEP-, got '$proposalId' for path '${this}'"
+        }
+        return proposalId
+    }
+
     private fun mapProposals(): List<ProposalGroup> {
         val proposalGroupedCommits = readJsonlObjects(normalizedDir, "keep-proposal-revisions")
             .groupBy { it.getJsonString("path") }
@@ -96,7 +111,7 @@ class KeepMapper(
             .map { (path, jsons) ->
                 path to jsons.mapIndexed { index, json ->
                     val parsed = try {
-                        json.getJsonString("content_text").extractProposalTextMetaData()
+                        json.getJsonString("content_text").extractProposalTextMetaData(path.proposalPathToId(), index)
                     } catch (e: Throwable) {
                         throw AssertionError(
                             "Failed to parse proposal meta in $path (commit index $index, sha=${
@@ -114,15 +129,6 @@ class KeepMapper(
             }
 
         return proposalGroupedCommits.map { proposalCommits ->
-            val pathName = proposalCommits.first.removePrefix("proposals/").removePrefix("stdlib/").take(9)
-            assert(pathName.startsWith("KEEP-")) {
-                "Proposal path name should start with KEEP-, got '$pathName' for path '${proposalCommits.first}'"
-            }
-            val proposalId = pathName.removePrefix("KEEP-")
-            assert(proposalId.all(Char::isDigit)) {
-                "Proposal id should be 4 digits after KEEP-, got '$proposalId' for path '${proposalCommits.first}'"
-            }
-
             val topics = proposalCommits.second.mapNotNull { it.proposalData.topic }
                 .ifEmpty {
                     // decide on a general topic based on if it's an stdlib proposal or a regular one
@@ -131,6 +137,7 @@ class KeepMapper(
                     else
                         listOf("Design proposal")
                 }
+            val proposalId = proposalCommits.first.proposalPathToId()
             assert(topics.distinct().size == 1) {
                 "Topic should not change across revisions in $proposalId, got ${topics.distinct()} (count=${topics.size})"
             }
@@ -201,12 +208,19 @@ class KeepMapper(
                     )
                 }
 
+            val proposalDiscussionIds = proposalCommits.second.mapNotNull { it.proposalData.discussionId }.distinct()
+            assert(proposalDiscussionIds.size <= 1) {
+                "Proposal $proposalId has multiple discussions: $proposalDiscussionIds"
+            }
+            val discussionId = proposalDiscussionIds.singleOrNull()
+
             ProposalGroup(
                 proposal,
                 proposalRevisions,
                 proposalAuthorRevisions,
                 stages,
                 relatedProposals,
+                discussionId,
             )
         }
     }
@@ -240,7 +254,7 @@ class KeepMapper(
         val rawStatus: String?,
         val normalizedStatus: String,
         val implementedAt: String?,
-        val discussionLink: String?,
+        val discussionId: Int?,
     )
 
     private data class ProposalGroup(
@@ -249,6 +263,7 @@ class KeepMapper(
         val authorRevisions: List<ProposalRevisionAuthor>,
         val stages: List<StageHistory>,
         val relatedProposals: List<RelatedProposal>,
+        val discussionId: Int?,
     )
 
     private fun resolveGHLogin(login: String): Long =
@@ -280,7 +295,7 @@ class KeepMapper(
         return prim.content
     }
 
-    private fun String.extractProposalTextMetaData(): ProposalTextMetaData {
+    private fun String.extractProposalTextMetaData(proposalId: String, revisionIndex: Int): ProposalTextMetaData {
         val nonBlankLines = this.lines().filter { it.isNotBlank() }
         val title = nonBlankLines[0].removePrefix("# ").trim()
         assert(title.isNotBlank()) { "Title was not found" }
@@ -300,7 +315,12 @@ class KeepMapper(
                 // Continuation: append, joined with a single space, leading indent stripped.
                 metaLines[metaLines.lastIndex] = metaLines.last().trimEnd() + " " + line.trim()
             } else {
-                log.warn("Meta line before any bullet entry; ignoring: '{}'", line)
+                log.warn(
+                    "Meta line before any bullet entry in KEEP-{} ver-{}; ignoring: '{}'",
+                    proposalId,
+                    revisionIndex,
+                    line
+                )
             }
         }
 
@@ -321,29 +341,37 @@ class KeepMapper(
         val keys = metaPairs.map { it.first }
         val metaWithTitle = "\nTITLE: $title\n" + metaLines.joinToString("\n")
         assert(keys.groupingBy { it }.eachCount().all { it.value == 1 }) {
-            "duplicate keys $keys in $metaWithTitle"
+            "duplicate keys $keys in KEEP-$proposalId ver-$revisionIndex: $metaWithTitle"
         }
         proposalTextMetaKeysSeen.addAll(keys)
 
         val metaMap = metaPairs.toMap()
 
-        if (metaMap["type"] == null) log.warn("Type field missing in {}", metaWithTitle)
+        if (metaMap["type"] == null) {
+            log.warn("Type field missing in KEEP-{} ver-{}", proposalId, revisionIndex)
+            log.debug("Type field missing: {}", metaWithTitle)
+        }
 
         // Authors come from exactly one of the three meta keys: singular `Author`, plural
         // `Authors` (comma-separated list), or `Proposal Author`.
         val authorKeysPresent = listOf("author", "authors", "proposal author").filter { metaMap[it] != null }
         assert(authorKeysPresent.size <= 1) {
-            "Multiple author-related fields $authorKeysPresent in $metaWithTitle"
+            "Multiple author-related fields $authorKeysPresent in KEEP-$proposalId ver-$revisionIndex: $metaWithTitle"
         }
         val authors = authorKeysPresent.firstOrNull()?.let { metaMap[it] }
             ?.split(',')
             ?.map { it.trim() }
             ?.filter { it.isNotBlank() }
-        if (authors == null) log.warn("Author field missing in {}", metaWithTitle)
-
-        if (metaMap["status"] == null) log.warn("Status field missing in {}", metaWithTitle)
+        if (authors == null) {
+            log.warn("Author field missing in KEEP-{} ver-{}", proposalId, revisionIndex)
+            log.debug("Author field missing: {}", metaWithTitle)
+        }
 
         val rawStatus = metaMap["status"]
+        if (rawStatus == null) {
+            log.warn("Status field missing in KEEP-{} ver-{}", proposalId, revisionIndex)
+            log.debug("Status field missing: {}", metaWithTitle)
+        }
         val (statusToken, implementedAt) = splitStatusFromVersion(rawStatus)
 
         return ProposalTextMetaData(
@@ -354,7 +382,7 @@ class KeepMapper(
             rawStatus = rawStatus,
             normalizedStatus = normalizeStatus(statusToken),
             implementedAt,
-            metaMap["discussion"]
+            metaMap["discussion"]?.extractDiscussionIdFromDiscussionField(),
         )
     }
 
@@ -480,9 +508,9 @@ class KeepMapper(
         return rawStatus to null
     }
 
-    private fun mapComments(proposalIntIds: Set<Int>): List<Comment> {
+    private fun mapComments(proposalIntIds: Set<Int>, discussionToProposalMap: Map<Int, String>): List<Comment> {
         val issueComments = mapIssueComments(proposalIntIds)
-        val discussionComments = mapDiscussions()
+        val discussionComments = mapDiscussions(discussionToProposalMap)
         val reviewThreadComments = mapPrReviewThreadComments(proposalIntIds)
         return issueComments + discussionComments + reviewThreadComments
     }
@@ -532,7 +560,7 @@ class KeepMapper(
         }
     }
 
-    private fun mapDiscussions(): List<Comment> {
+    private fun mapDiscussions(discussionToProposalMap: Map<Int, String>): List<Comment> {
         val discussionCommentJsons = readJsonlObjects(normalizedDir, "keep-discussion-comments")
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
 
@@ -540,12 +568,11 @@ class KeepMapper(
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
             .filter { it["category"]!!.jsonObject.getJsonString("name") == "keep-discussions" }
             .mapNotNull {
-                val content = it.getJsonStringOrNull("body").orEmpty()
-                val proposalId = content.extractProposalIdFromDiscussionContent()
+                val number = it["number"]!!.jsonPrimitive.int
+                val proposalId = discussionToProposalMap[number]
                 if (proposalId == null) {
-                    val number = it["number"]?.jsonPrimitive?.intOrNull
                     log.warn(
-                        "Skipping discussion #{}: body does not contain a https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-... link",
+                        "Skipping discussion #{}: no proposal links to this discussion",
                         number,
                     )
                     return@mapNotNull null
@@ -619,14 +646,13 @@ class KeepMapper(
     )
 
     /**
-     * Tries to find a `https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-NNNN-...md` URL in
-     * the discussion body and returns the `KEEP-NNNN` prefix. Returns null if no such link is
-     * present (some discussions in the `keep-discussions` category don't follow the convention).
+     * Tries to find a `https://github.com/Kotlin/KEEP/discussions/<id>` URL in
+     * the discussion field and returns the `<id>`.
      */
-    private fun String.extractProposalIdFromDiscussionContent(): String? {
-        val mentionedProposals = PROPOSAL_URL_REGEX.find(this)?.groupValues ?: return null
-        assert(mentionedProposals.size == 2) { "Unexpected number of matches: $mentionedProposals" }
-        return mentionedProposals[1]
+    private fun String.extractDiscussionIdFromDiscussionField(): Int? {
+        val discussionLinks = DISCUSSION_URL_REGEX.find(this)?.groupValues ?: return null
+        assert(discussionLinks.size == 2) { "Unexpected number of matches: $discussionLinks in $this" }
+        return discussionLinks[1].toInt()
     }
 
 
@@ -686,10 +712,8 @@ class KeepMapper(
     }
 
     companion object {
-        private const val PROPOSALS_URL_PREFIX =
-            "https://github.com/Kotlin/KEEP/blob/main/proposals/"
-        private val PROPOSAL_URL_REGEX =
-            Regex("""${Regex.escape(PROPOSALS_URL_PREFIX)}(?:stdlib/)?KEEP-(\d{4})""")
+        private val DISCUSSION_URL_REGEX =
+            Regex("""https://github\.com/Kotlin/KEEP/discussions/(\d+)""")
         private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d{4})""")
     }
 }
