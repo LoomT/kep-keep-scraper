@@ -135,6 +135,11 @@ Arguments:
     paths discovered from the local mirror — so this implies cloning the mirror).
   - For the generic scraper (`:scraper:run`), no path filter; the entire repo's
     history is fetched. Skip this phase on huge repos unless you need it.
+- `users` — fetches `GET /users/{login}` for every distinct GitHub login that appears anywhere in the other
+  `<tag>-*.jsonl` streams already on disk. Runs sequentially **after** every other selected phase, so it sees
+  freshly-emitted data; running it alone (`--include=users`) reuses the JSONLs from your last scrape — no manual
+  `logins.txt` input needed. Output goes to
+  `<tag>-users.jsonl` (e.g. `keep-users.jsonl`, `kep-users.jsonl`). ETag-cached on re-run, 404s skipped.
 
 All three CLIs (`:scraper:run`, `:keep:run`, `:kep:run`) share the same flag
 syntax — `--mode=`, `--limit=`, `--include=`, `--dataDir=` — none of them are
@@ -145,26 +150,6 @@ positional. The generic scraper additionally requires `--repo=`.
 ./gradlew :kep:run  --args="--mode=update --include=issues,prs"
 ./gradlew :keep:run --args="--mode=update --dataDir=/tmp/keep-scrape"
 ```
-
-### Scraping user metadata for a manually-supplied login list
-
-Once you have a list of GitHub logins (e.g., emitted by `:loader` from
-`PersonUsername` rows, or assembled by hand), you can fetch full account
-metadata — `name`, `company`, `location`, `bio`, `public_repos`, `followers`,
-account creation timestamp, etc. — via `GET /users/{login}`:
-
-```sh
-./gradlew :scraper:runUsers -Pinput=path/to/logins.txt
-```
-
-Input file: one GitHub login per line, blank lines and lines starting with
-`#` are ignored. Optional Gradle properties: `-PdataDir=...` (default
-`data/users/`, isolated from the per-repo scrape caches), `-Plimit=N` for
-smoke tests, `-Pmode=full|update` (default `update`).
-
-Output: `<dataDir>/normalized/users.jsonl` — one row per user (the raw
-`/users/{login}` response, plus `_login` and `_scraped_at` meta). 404
-(deleted/renamed accounts) are logged at WARN and skipped — not fatal.
 
 ### Where the data goes
 

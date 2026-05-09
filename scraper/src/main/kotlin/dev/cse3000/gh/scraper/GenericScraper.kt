@@ -69,5 +69,12 @@ class GenericScraper(
                 }
             }
         }
+        // Users runs sequentially AFTER everything else: it scans the just-emitted
+        // <tag>-*.jsonl files for distinct logins. Flush first so any in-flight buffered
+        // lines are visible to the file scan.
+        if (ScrapePhase.USERS in phases) {
+            ctx.sink.flushAll()
+            UsersCollector(ctx.client, ctx.sink).run(tag, ctx.dataDir.resolve("normalized"), limit)
+        }
     }
 }

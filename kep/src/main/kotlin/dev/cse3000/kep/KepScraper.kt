@@ -3,6 +3,7 @@ package dev.cse3000.kep
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.GenericScraper
 import dev.cse3000.gh.scraper.ScrapePhase
+import dev.cse3000.gh.scraper.UsersCollector
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -27,9 +28,11 @@ class KepScraper(private val ctx: ScrapeContext) {
             OWNER, REPO, incremental, limit, applicable.map { it.cli },
         )
         coroutineScope {
-            // Same split as KeepScraper: delegate non-proposal, non-commit phases to GenericScraper;
-            // do commits ourselves with per-path filtering on the kep.yaml + README files.
-            val genericPhases = applicable - ScrapePhase.PROPOSALS - ScrapePhase.COMMITS
+            // Same split as KeepScraper: delegate non-proposal, non-commit, non-users phases
+            // to GenericScraper; run commits ourselves with per-path filtering on
+            // kep.yaml + README files; run users ourselves at the end so it's keyed by our
+            // own TAG (`kep-users.jsonl`).
+            val genericPhases = applicable - ScrapePhase.PROPOSALS - ScrapePhase.COMMITS - ScrapePhase.USERS
             if (genericPhases.isNotEmpty()) {
                 launch { GenericScraper(ctx, OWNER, REPO, TAG).run(incremental, limit, genericPhases) }
             }
@@ -39,6 +42,10 @@ class KepScraper(private val ctx: ScrapeContext) {
             if (ScrapePhase.COMMITS in applicable) {
                 launch { KepCommitsCollector(ctx).run(incremental, limit) }
             }
+        }
+        if (ScrapePhase.USERS in applicable) {
+            ctx.sink.flushAll()
+            UsersCollector(ctx.client, ctx.sink).run(TAG, ctx.dataDir.resolve("normalized"), limit)
         }
     }
 }
