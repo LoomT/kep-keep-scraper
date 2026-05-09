@@ -3,7 +3,6 @@ package dev.cse3000.kep
 import dev.cse3000.gh.io.ScrapeContext
 import dev.cse3000.gh.scraper.GenericScraper
 import dev.cse3000.gh.scraper.ScrapePhase
-import dev.cse3000.gh.scraper.UsersCollector
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -27,14 +26,17 @@ class KepScraper(private val ctx: ScrapeContext) {
             "Scraping {}/{} (incremental={}, limit={}, phases={})",
             OWNER, REPO, incremental, limit, applicable.map { it.cli },
         )
+        val genericScraper = GenericScraper(ctx, OWNER, REPO, TAG)
         coroutineScope {
-            // Same split as KeepScraper: delegate non-proposal, non-commit, non-users phases
-            // to GenericScraper; run commits ourselves with per-path filtering on
-            // kep.yaml + README files; run users ourselves at the end so it's keyed by our
-            // own TAG (`kep-users.jsonl`).
-            val genericPhases = applicable - ScrapePhase.PROPOSALS - ScrapePhase.COMMITS - ScrapePhase.USERS
+            // Same split as KeepScraper: delegate non-proposal, non-commit, non-users,
+            // non-orgs phases to GenericScraper; run commits ourselves with per-path filtering
+            // on kep.yaml + README files; we run users + orgs again
+            // at the end to ensure that they run after proposals and commits
+            val genericPhases = applicable -
+                    ScrapePhase.PROPOSALS - ScrapePhase.COMMITS -
+                    ScrapePhase.USERS - ScrapePhase.ORGS
             if (genericPhases.isNotEmpty()) {
-                launch { GenericScraper(ctx, OWNER, REPO, TAG).run(incremental, limit, genericPhases) }
+                launch { genericScraper.run(incremental, limit, genericPhases) }
             }
             if (ScrapePhase.PROPOSALS in applicable) {
                 launch { KepRevisionCollector(ctx).run() }
@@ -43,9 +45,7 @@ class KepScraper(private val ctx: ScrapeContext) {
                 launch { KepCommitsCollector(ctx).run(incremental, limit) }
             }
         }
-        if (ScrapePhase.USERS in applicable) {
-            ctx.sink.flushAll()
-            UsersCollector(ctx.client, ctx.sink).run(TAG, ctx.dataDir.resolve("normalized"), limit)
-        }
+        val laterPhases = phases.intersect(setOf(ScrapePhase.USERS, ScrapePhase.ORGS))
+        genericScraper.run(incremental, limit, laterPhases)
     }
 }

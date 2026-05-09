@@ -140,6 +140,14 @@ Arguments:
   freshly-emitted data; running it alone (`--include=users`) reuses the JSONLs from your last scrape — no manual
   `logins.txt` input needed. Output goes to
   `<tag>-users.jsonl` (e.g. `keep-users.jsonl`, `kep-users.jsonl`). ETag-cached on re-run, 404s skipped.
+- `orgs` — runs **after** `users`. For every login in `<tag>-users.jsonl`, fetches
+  `GET /users/{login}/orgs` (the user's `organizations_url`) and emits the orgs array to `<tag>-user-orgs.jsonl` keyed
+  by `_login` — that's the user→orgs membership. Then fetches `GET /orgs/{org}` for every distinct org login discovered
+  and emits full org details (name, company, blog, location, email, description, etc.) to
+  `<tag>-orgs.jsonl`. Loader-side mapping of users to orgs additionally uses
+  `users[i].company` (free-text affiliation) and `users[i].email` when the domain looks private (i.e. not a public mail
+  provider) — those won't appear as GitHub org memberships but still represent real affiliations. ETag-cached, 404s
+  skipped.
 
 All three CLIs (`:scraper:run`, `:keep:run`, `:kep:run`) share the same flag
 syntax — `--mode=`, `--limit=`, `--include=`, `--dataDir=` — none of them are

@@ -72,9 +72,17 @@ class GenericScraper(
         // Users runs sequentially AFTER everything else: it scans the just-emitted
         // <tag>-*.jsonl files for distinct logins. Flush first so any in-flight buffered
         // lines are visible to the file scan.
+        val normalizedDir = ctx.dataDir.resolve("normalized")
         if (ScrapePhase.USERS in phases) {
             ctx.sink.flushAll()
-            UsersCollector(ctx.client, ctx.sink).run(tag, ctx.dataDir.resolve("normalized"), limit)
+            UsersCollector(ctx.client, ctx.sink).run(tag, normalizedDir, limit)
+        }
+        // Orgs runs after users — it reads <tag>-users.jsonl to discover users, fetches each
+        // user's /users/{login}/orgs membership list, then fetches /orgs/{org} for every
+        // distinct org. Flush again because the users phase just emitted <tag>-users.jsonl.
+        if (ScrapePhase.ORGS in phases) {
+            ctx.sink.flushAll()
+            OrgsCollector(ctx.client, ctx.sink).run(tag, normalizedDir, limit)
         }
     }
 }

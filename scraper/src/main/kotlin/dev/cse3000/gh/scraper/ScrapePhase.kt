@@ -7,7 +7,8 @@ enum class ScrapePhase(val cli: String) {
     DISCUSSIONS("discussions"),
     PROPOSALS("proposals"),
     COMMITS("commits"),
-    USERS("users");
+    USERS("users"),
+    ORGS("orgs");
 
     companion object {
         val all: Set<ScrapePhase> = entries.toSet()
