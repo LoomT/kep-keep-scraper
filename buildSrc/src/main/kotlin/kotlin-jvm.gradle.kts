@@ -35,4 +35,10 @@ tasks.withType<Test>().configureEach {
 // instead of `<module>/data/`, and the loader can read everything from one place without a copy step.
 tasks.withType<JavaExec>().configureEach {
     workingDir = rootProject.projectDir
+
+    // Make the monorepo root visible to every JavaExec'd main as `-DmonorepoRoot=...`.
+    // Default: the parent of rootProject.projectDir
+    val monorepoRoot = (project.findProperty("monorepoRoot") as? String)
+        ?: rootProject.projectDir.parentFile?.absolutePath
+    monorepoRoot?.let { systemProperty("monorepoRoot", it) }
 }

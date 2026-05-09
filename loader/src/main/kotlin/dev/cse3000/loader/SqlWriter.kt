@@ -6,7 +6,7 @@ import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Emits a single `data.sql` containing INSERT statements in FK-dependency
- * order, plus `apply.sh` / `apply.bat` convenience scripts and a `schema.txt`
+ * order, plus `apply.sh` / `apply.bat` convenience scripts and a `schema-copy.sql`
  * snapshot for sanity-checking against the .db at apply time.
  *
  * Apply with: `bash apply.sh /path/to/proposals.db` (or `apply.bat` on Windows).
@@ -20,11 +20,11 @@ class SqlWriter(private val outDir: Path) {
         Files.createDirectories(outDir)
 
         // Schema snapshot
-        val schemaTarget = outDir.resolve("schema.sql")
+        val schemaTarget = outDir.resolve("schema-copy.sql")
         if (schemaSource != null && Files.exists(schemaSource)) {
             Files.copy(schemaSource, schemaTarget, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         } else {
-            Files.writeString(schemaTarget, "-- db-schema.sql not found at loader run time\n")
+            Files.writeString(schemaTarget, "-- schema.sql not found at loader run time\n")
         }
 
         // data.sql

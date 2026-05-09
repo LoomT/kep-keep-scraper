@@ -1,7 +1,7 @@
 package dev.cse3000.loader
 
 /**
- * Data classes mirroring `db-schema.sql`. Field order here matches the column
+ * Data classes mirroring `schema.sql`. Field order here matches the column
  * order in [SqlWriter] so adding a field is one of "two" places to update.
  */
 data class Project(

@@ -19,7 +19,7 @@ application {
 
 // Forward -PsharedDbPath / -PrunReport flags to the JVM.
 tasks.named<JavaExec>("run").configure {
-    listOf("sharedDbPath").forEach { name ->
+    listOf("sharedDbPath", "monorepoRoot").forEach { name ->
         project.findProperty(name)?.let { systemProperty(name, it.toString()) }
     }
 }

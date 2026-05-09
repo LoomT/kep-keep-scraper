@@ -14,8 +14,7 @@ import java.sql.DriverManager
  * the unified data dir shared by all the scrapers.
  *
  * Override at runtime with `-PsharedDbPath=...` (forwarded to the JVM as
- * `-DsharedDbPath=...`) — useful for analyses that want to point straight at
- * a sibling-repo checkout without copying.
+ * `-DsharedDbPath=...`).
  */
 object SharedDb {
     fun resolvePath(): Path {

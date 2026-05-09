@@ -8,15 +8,18 @@ private val log = LoggerFactory.getLogger("dev.cse3000.loader.Main")
 
 fun main() {
     val keepProjectId = sysIntProp("keepProjectId")
-        ?: error("Pass -PkeepProjectId=N (your assigned project_id for KEEP)")
+        ?: error("Pass -PkeepProjectId=N (assigned project_id for KEEP)")
     val kepProjectId = sysIntProp("kepProjectId")
-        ?: error("Pass -PkepProjectId=N (your assigned project_id for KEP)")
+        ?: error("Pass -PkepProjectId=N (assigned project_id for KEP)")
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
     val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
-    val schemaSource = listOf(
-        Paths.get("db-schema.sql"),
-        Paths.get("loader/db-schema.sql"),
-    ).firstOrNull { java.nio.file.Files.exists(it) }
+    // Schema source resolution, in priority order:
+    // 1. -PschemaPath=<path> — explicit override (mirrors -PsharedDbPath in :rq3).
+    // 2. -PmonorepoRoot=<path>/schema.sql — by default, it's the parent of rootProject.projectDir.
+    val schemaSource = sequenceOf(
+        System.getProperty("schemaPath")?.let(Paths::get),
+        System.getProperty("monorepoRoot")?.let { Paths.get(it, "schema.sql") },
+    ).filterNotNull().firstOrNull { java.nio.file.Files.exists(it) }
 
     val keepBaseId = keepProjectId.toLong() * 1_000_000L
     val kepBaseId = kepProjectId.toLong() * 1_000_000L

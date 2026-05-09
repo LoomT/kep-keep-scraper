@@ -363,7 +363,7 @@ class KeepMapper(
      * `"Submitted"`, `"Superseded by KEEP-N"`) onto one of the `StageHistory.normalised_status`
      * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `unknown`.
      *
-     * Per `db-schema.sql`: `superseded -> rejected, null or not clear -> unknown`.
+     * Per `schema.sql`: `superseded -> rejected, null or not clear -> unknown`.
      *
      * Logs a WARN with `MISSING_STATUS_MAPPING:` on any token that isn't recognized so they're
      * easy to grep out of the run output and add cases for.

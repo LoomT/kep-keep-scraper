@@ -2,12 +2,13 @@
 
 ## Modules
 
-| Module     | Purpose                                                                                         |
-|------------|-------------------------------------------------------------------------------------------------|
-| `:scraper` | Shared library + a generic scraper CLI that works against any GitHub repo.                      |
-| `:keep`    | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk.                |
-| `:kep`     | KEP-specific scraper (`kubernetes/enhancements`). Includes the kep.yaml + README revision walk. |
-| `:rq3`     | Analysis module (TBD).                                                                          |
+| Module     | Purpose                                                                                              |
+|------------|------------------------------------------------------------------------------------------------------|
+| `:scraper` | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                    |
+| `:keep`    | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk.                     |
+| `:kep`     | KEP-specific scraper (`kubernetes/enhancements`). Includes the kep.yaml + README revision walk.      |
+| `:loader`  | Maps the KEEPs and KEPs to the common SQL schema and creates `data.sql` for loading into a database. |
+| `:rq3`     | Analysis module (TBD).                                                                               |
 
 ## Prerequisites
 
@@ -26,9 +27,64 @@ $env:GITHUB_TOKEN = "ghp_..."
 export GITHUB_TOKEN=ghp_...
 ```
 
+## Monorepo layout (git subtrees)
+
+The monorepo root holds the shared
+`schema.sql` (and optionally `proposals.db`) plus one folder per contributor — including this repo as `rq3-keep-kep/`.
+With subtrees, every contributor's files live directly in the monorepo's own commit history (no nested `.git`, no
+`.gitmodules`), so a plain `git clone <monorepo-url>`
+fetches everything in one shot. The Gradle convention plugin sets
+`-DmonorepoRoot=<parent dir>` for every `:run` task, so the loader and
+`:rq3` discover `../schema.sql` / `../proposals.db` automatically.
+
+### Open this project from a monorepo clone
+
+```sh
+# 1. Clone the monorepo (single shot — subtrees include everyone's files).
+git clone <monorepo-url> proposals-monorepo
+cd cse3000-sep/rq3-keep-kep
+
+# 2. Open this folder in IntelliJ (NOT the monorepo root). IntelliJ detects
+#    settings.gradle.kts here and treats this as the project root, so sibling
+#    contributors' folders aren't indexed. Git VCS resolves to the monorepo's
+#    .git/ at the parent level — that's expected; commits made via the IDE go
+#    to the monorepo's history.
+idea .   # or open the folder via File ▸ Open in IntelliJ
+
+# 3. Run any Gradle command exactly as in standalone mode. The loader picks
+#    ../schema.sql automatically; :rq3 picks ../proposals.db automatically.
+./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
+./gradlew :rq3:run
+```
+
+To work on this repo *outside* the monorepo (e.g., to push to its standalone GitLab project), use `git subtree split`
+from the monorepo root:
+
+```sh
+cd <monorepo-root>
+git subtree split --prefix=rq3-keep-kep --branch=keep-kep-export
+git push <this-repo-standalone-url> keep-kep-export:main
+```
+
+To pull upstream changes from the standalone repo back into the monorepo:
+
+```sh
+cd <monorepo-root>
+git subtree pull --prefix=rq3-keep-kep <this-repo-standalone-url> main --squash
+```
+
+Either layout, **open `rq3-keep-kep/` in IntelliJ** (not the monorepo root), so sibling contributors' folders aren't
+pulled into indexing.
+
+Override knobs (any `:run` task):
+
+- `-PschemaPath=path/to/schema.sql` — explicit schema location for the loader.
+- `-PsharedDbPath=path/to/proposals.db` — explicit shared-DB location for `:rq3`.
+- `-PmonorepoRoot=path/to/monorepo` — override the auto-detected monorepo root.
+
 ## Running the scrapers
 
-All commands assume you're at the repo root.
+All commands run from inside `rq3-keep-kep/`.
 
 ### KEEP and KEP (the named scrapers)
 
@@ -271,10 +327,10 @@ the manifest's `requests_304` count tells you how many.
 
 This scraper feeds into a **shared SQLite database**.
 
-### One-shot push
+### One-shot application
 
 The `:loader` module produces `data.sql` from the local `data/normalized/*.jsonl`
-streams and emits `apply.sh` / `apply.bat` helpers. The push is **one-shot**:
+streams and emits `apply.sh` / `apply.bat` helpers. The application is **one-shot**:
 re-applying the same SQL to a database that already contains your project_ids'
 rows will fail on PRIMARY KEY violations.
 
@@ -283,57 +339,48 @@ rows will fail on PRIMARY KEY violations.
 ./gradlew :keep:run
 ./gradlew :kep:run
 
-# 2. Generate SQL (replace 3 / 4 with your assigned project ids)
-./gradlew :loader:run -PkeepProjectId=3 -PkepProjectId=4
+# 2. Generate SQL
+./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
 
-# 3. Apply to the sibling repo's committed proposals.db
-cd ~/projects/proposals-db && git pull
-bash ~/projects/this-repo/loader/build/export/keep-kep/apply.sh ./proposals.db
-
-# 4. Commit + push the modified .db
-git add proposals.db
-git commit -m "[keep-kep] one-shot import"
-git push
+# 3. Apply to the shared proposals.db. In the monorepo-subtree layout, the .db
+#    lives at the monorepo root one level up:
+bash loader/build/export/keep-kep/apply.sh ../proposals.db
 ```
 
 `:loader:run` writes:
 
 ```
 loader/build/export/keep-kep/
-  schema.txt        # snapshot of db-schema.sql (sanity check vs the live .db)
+  schema-copy.sql   # snapshot of schema.sql (sanity check vs the live .db)
   data.sql          # all INSERTs in FK-dependency order, single transaction
   apply.sh          # bash apply.sh path/to/proposals.db
   apply.bat         # Windows equivalent
 ```
 
-`person_id` / `organisation_id` / `comment_id` values are allocated locally in
-the half-open range `[smallestProjectId × 1_000_000, +1_000_000)` so they can't
+`person_id` / `organisation_id` / `comment_id` values are allocated locally in the half-open range
+`[project_id × 1_000_000, +1_000_000)` so they can't
 collide with other contributors' allocations. Person dedup across projects is
 deferred to `:rq3` post-processing, e.g., the same GitHub user appearing in two
 contributors' data will be two separate `Person` rows after both pushes.
 
-### Pull and analyse in `:rq3`
+### Analysis in `:rq3`
 
 ```sh
-# 1. Pull the latest sibling repo
-cd ~/projects/proposals-db && git pull
-
-# 2. Sync the shared db into this repo's :rq3 module
-cd ~/projects/this-repo
-./gradlew :rq3:syncSharedDb -PsharedDbPath=../../proposals-db/proposals.db
-
-# 3. Run analyses (initially: print sanity row counts per table)
-./gradlew :rq3:run
+# Copy the .db into the local data.
+./gradlew :rq3:syncSharedDb -PsharedDbPath=../proposals.db
+./gradlew :rq3:run    # opens data/shared/proposals.db
 ```
 
-`syncSharedDb` copies the .db into `rq3/data/shared/proposals.db` (gitignored).
-`:rq3:run` opens it via `sqlite-jdbc`. You can also point `:rq3` at the
-sibling-repo checkout directly without copying via
-`-PsharedDbPath=path/to/proposals.db` on `:rq3:run`.
+`syncSharedDb` copies the .db into `data/shared/proposals.db` (gitignored).
+`:rq3:run` opens it via `sqlite-jdbc`. Resolution priority for the shared DB:
+`-PsharedDbPath` (explicit) > `<monorepoRoot>/proposals.db` (if it exists) >
+`<repo-root>/data/shared/proposals.db` (the synced snapshot).
 
-### Schema is `db-schema.sql`
+[//]: # (TODO expand after rq3 is done)
 
-The collaborative schema lives in `db-schema.sql` at the repo root. The loader's
+### Schema is `schema.sql`
+
+The collaborative database schema lives in `schema.sql` at the monorepo root. The loader's
 `SchemaModel.kt` data classes mirror it; if the schema changes, update both
 together. The loader's per-stream → SQL mapping (`KeepMapper.kt` / `KepMapper.kt`)
 is TBD
