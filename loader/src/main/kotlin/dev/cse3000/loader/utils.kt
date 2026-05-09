@@ -9,6 +9,9 @@ internal inline fun <T, K> List<T>.distinctUntilChangedBy(selector: (T) -> K): L
         acc
     }
 
+/**
+ * Keep only the latest scrapes for each key (selector).
+ */
 internal inline fun <T> Sequence<JsonObject>.keepLatestScrapesBy(crossinline selector: (JsonObject) -> T): Sequence<JsonObject> =
     groupingBy { selector(it) }
         .reduce { _, acc, obj ->

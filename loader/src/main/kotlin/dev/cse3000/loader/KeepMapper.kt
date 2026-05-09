@@ -1,5 +1,6 @@
 package dev.cse3000.loader
 
+import dev.cse3000.loader.KeepMapper.Companion.BUSINESS_EMAIL_DOMAINS
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -49,6 +50,8 @@ class KeepMapper(
         }
         val relatedProposals = validRelated.distinct()
 
+        val (organisations, affiliations) = mapOrgsAndAffiliations()
+
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
         for ((login, id) in personByGHLogin) {
@@ -74,6 +77,8 @@ class KeepMapper(
             ),
             persons = persons,
             personUsernames = personUsernames,
+            organisations = organisations,
+            affiliations = affiliations,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
@@ -84,8 +89,9 @@ class KeepMapper(
 
         log.info("Meta keys seen: {}", proposalTextMetaKeysSeen)
         log.info(
-            "Resolver counts: GH logins={}, emails={}, names={}, total Person rows={}",
+            "Resolver counts: GH logins={}, emails={}, names={}, total Person rows={}, Organisations={}, Affiliations={}",
             personByGHLogin.size, personByEmail.size, personByName.size, persons.size,
+            organisations.size, affiliations.size,
         )
         log.info(
             "Proposal status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
@@ -521,6 +527,120 @@ class KeepMapper(
         return rawStatus to null
     }
 
+    /**
+     * Builds the [Organisation] and [Affiliation] rows from three sources:
+     *
+     * 1. **GitHub org membership** — `keep-user-orgs.jsonl` (one row per user with their
+     *    org list) joined against `keep-orgs.jsonl` (full per-org details).
+     * 2. **`user.company` free-text field** — from `keep-users.jsonl`. Stripped of leading
+     *    `@` (people often write `@JetBrains`) and deduped against (1) by
+     *    case-insensitive canonical name.
+     * 3. **`user.email` business domain (whitelist)** — only when the email's domain is in
+     *    [BUSINESS_EMAIL_DOMAINS]. We deliberately favour false negatives here: it's much
+     *    safer to miss a real corporate domain than to mint a fake "company" from a
+     *    personal vanity domain (`flowerguy.io`, `mike.dev`). Every domain encountered is
+     *    logged with its hit count so the whitelist can be grown from observation.
+     *
+     * Orgs are deduped by canonical name (lowercased, trimmed, leading `@` stripped) so
+     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains`, and the email domain
+     * `jetbrains.com` all end up as separate rows ONLY if they differ after that
+     * normalisation. (They often will — string matching is intentionally conservative;
+     * downstream RQ3 dedup can run a fuzzier merge if desired.)
+     *
+     * Affiliations are deduped on the composite PK `(organisation_id, person_id)`.
+     *
+     * Should run after [personByGHLogin] is fully populated.
+     */
+    private fun mapOrgsAndAffiliations(): Pair<List<Organisation>, List<Affiliation>> {
+        val orgsByLogin: Map<String, JsonObject> = readJsonlObjects(normalizedDir, "keep-orgs")
+            .keepLatestScrapesBy { it.getJsonString("login") }
+            .associateBy { it.getJsonString("login") }
+
+        val users = readJsonlObjects(normalizedDir, "keep-users")
+            .keepLatestScrapesBy { it.getJsonString("login") }
+            .filter { it.getJsonString("login") in personByGHLogin.keys }
+            .toList()
+
+        val userOrgs = readJsonlObjects(normalizedDir, "keep-user-orgs")
+            .keepLatestScrapesBy { it.getJsonString("_login") }
+            .filter { it.getJsonString("_login") in personByGHLogin.keys }
+            .toList()
+
+        val orgIdByCanonName = mutableMapOf<String, Long>()
+        val organisations = mutableListOf<Organisation>()
+
+        fun ensureOrg(rawName: String): Long? {
+            val display = rawName.trim().removePrefix("@").trim()
+            if (display.isEmpty()) return null
+            val canon = display.lowercase()
+            return orgIdByCanonName.getOrPut(canon) {
+                val id = organisationIds.nextId()
+                organisations += Organisation(organisationId = id, organisationName = display)
+                id
+            }
+        }
+
+        val affiliationKeys = mutableSetOf<Pair<Long, Long>>()
+        val affiliations = mutableListOf<Affiliation>()
+        fun addAffiliation(orgId: Long?, personId: Long) {
+            if (orgId == null) return
+            if (affiliationKeys.add(orgId to personId)) {
+                affiliations += Affiliation(organisationId = orgId, personId = personId)
+            }
+        }
+
+        // Source 1: explicit GitHub memberships.
+        for (row in userOrgs) {
+            val login = row.getJsonString("_login")
+            val personId = resolveGHLogin(login)
+            val orgsArray = row["orgs"] as? JsonArray ?: continue
+            for (ref in orgsArray) {
+                val orgLogin = (ref as? JsonObject)?.getJsonStringOrNull("login") ?: continue
+                // Prefer the org's display `name` (from /orgs/{org}); fall back to the login.
+                val orgJson = orgsByLogin[orgLogin]
+                val name = orgJson?.getJsonStringOrNull("name")?.takeIf { it.isNotBlank() } ?: orgLogin
+                addAffiliation(ensureOrg(name), personId)
+            }
+        }
+
+        // Source 2 + 3: company free-text and (whitelisted-only) email domains.
+        val emailDomainCounts = mutableMapOf<String, Int>()
+        for (user in users) {
+            val login = user.getJsonString("login")
+            val personId = resolveGHLogin(login)
+
+            user.getJsonStringOrNull("company")?.takeIf { it.isNotBlank() }?.let { company ->
+                addAffiliation(ensureOrg(company), personId)
+            }
+
+            user.getJsonStringOrNull("email")?.takeIf { it.isNotBlank() }?.let { email ->
+                val domain = email.substringAfter('@', missingDelimiterValue = "").trim().lowercase()
+                if (domain.isNotEmpty()) {
+                    emailDomainCounts.merge(domain, 1) { a, b -> a + b }
+                    if (domain in BUSINESS_EMAIL_DOMAINS) {
+                        addAffiliation(ensureOrg(domain), personId)
+                    }
+                }
+            }
+        }
+
+        if (emailDomainCounts.isNotEmpty()) {
+            val sorted = emailDomainCounts.entries
+                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            val report = sorted.joinToString("\n") { (d, n) ->
+                val mark = if (d in BUSINESS_EMAIL_DOMAINS) "[whitelisted]" else "[skipped]    "
+                val s = if (n == 1) "" else "s"
+                "  $mark $d  ($n user$s)"
+            }
+            log.info(
+                "Email domains seen across {} user record(s); extend BUSINESS_EMAIL_DOMAINS in KeepMapper to include more:\n{}",
+                users.size, report,
+            )
+        }
+
+        return organisations to affiliations
+    }
+
     private fun mapComments(
         proposalIntIds: Set<Int>,
         discussionToProposalMap: Map<Int, String>,
@@ -788,5 +908,32 @@ class KeepMapper(
         private val PR_URL_REGEX =
             Regex("""https://github\.com/Kotlin/KEEP/pull/(\d+)""")
         private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d{4})""")
+
+        /**
+         * Whitelist of email domains we trust to indicate a real company affiliation.
+         * Anything outside this list is treated as personal/unknown and dropped — we
+         * favour false negatives (missing a corporate affiliation) over false positives
+         * (minting a fake "company" from `someone-vanity.dev`).
+         *
+         * To grow this list: run the loader, look at the `Email domains seen across …
+         * user record(s)` log line — every domain in the corpus is shown there with a
+         * hit count and a `[whitelisted]` / `[skipped]` marker. Add the obvious
+         * corporate ones to this set and re-run.
+         */
+        private val BUSINESS_EMAIL_DOMAINS = setOf(
+            "jetbrains.com",
+            "google.com",
+            "apple.com",
+            "microsoft.com",
+            "amazon.com",
+            "meta.com",
+            "redhat.com",
+            "oracle.com",
+            "ibm.com",
+            "nvidia.com",
+            "intel.com",
+            "gradle.com",
+            "gradle.org",
+        )
     }
 }
