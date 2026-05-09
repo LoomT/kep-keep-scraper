@@ -34,7 +34,10 @@ class KeepMapper(
         val discussionToProposalMap = proposalGroups
             .mapNotNull { group -> group.discussionId?.let { it to group.proposal.proposalId } }
             .toMap()
-        val comments = mapComments(proposalIntIds, discussionToProposalMap)
+        val prToProposalMap = proposalGroups
+            .mapNotNull { group -> group.prId?.let { it to group.proposal.proposalId } }
+            .toMap()
+        val comments = mapComments(proposalIntIds, discussionToProposalMap, prToProposalMap)
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
         val (validRelated, danglingRelated) = rawRelated.partition { it.proposalId in proposalIds }
@@ -214,6 +217,12 @@ class KeepMapper(
             }
             val discussionId = proposalDiscussionIds.singleOrNull()
 
+            val proposalPrIds = proposalCommits.second.mapNotNull { it.proposalData.prId }.distinct()
+            assert(proposalPrIds.size <= 1) {
+                "Proposal $proposalId has multiple discussion PRs: $proposalPrIds"
+            }
+            val prId = proposalPrIds.singleOrNull()
+
             ProposalGroup(
                 proposal,
                 proposalRevisions,
@@ -221,6 +230,7 @@ class KeepMapper(
                 stages,
                 relatedProposals,
                 discussionId,
+                prId,
             )
         }
     }
@@ -255,6 +265,7 @@ class KeepMapper(
         val normalizedStatus: String,
         val implementedAt: String?,
         val discussionId: Int?,
+        val prId: Int?,
     )
 
     private data class ProposalGroup(
@@ -264,6 +275,7 @@ class KeepMapper(
         val stages: List<StageHistory>,
         val relatedProposals: List<RelatedProposal>,
         val discussionId: Int?,
+        val prId: Int?,
     )
 
     private fun resolveGHLogin(login: String): Long =
@@ -383,6 +395,7 @@ class KeepMapper(
             normalizedStatus = normalizeStatus(statusToken),
             implementedAt,
             metaMap["discussion"]?.extractDiscussionIdFromDiscussionField(),
+            metaMap["discussion"]?.extractPrIdFromDiscussionField(),
         )
     }
 
@@ -508,55 +521,113 @@ class KeepMapper(
         return rawStatus to null
     }
 
-    private fun mapComments(proposalIntIds: Set<Int>, discussionToProposalMap: Map<Int, String>): List<Comment> {
+    private fun mapComments(
+        proposalIntIds: Set<Int>,
+        discussionToProposalMap: Map<Int, String>,
+        prToProposalMap: Map<Int, String>
+    ): List<Comment> {
         val issueComments = mapIssueComments(proposalIntIds)
         val discussionComments = mapDiscussions(discussionToProposalMap)
-        val reviewThreadComments = mapPrReviewThreadComments(proposalIntIds)
+        val reviewThreadComments = mapPrReviewThreadComments(prToProposalMap)
         return issueComments + discussionComments + reviewThreadComments
     }
 
+
     /**
-     * PR code-review comments (line comments on diffs). Source: `keep-pr-review-comments.jsonl`,
-     * one comment per line with `id`, `_pr`, `user.login`, `created_at`, `body`.
+     * Maps every proposal-linked PR's body + comments into a Comment chain.
      *
-     * Within each PR, every comment is chained chronologically: the earliest comment is the
-     * root (`commentOnCommentId = null`) and every subsequent comment points at its
-     * predecessor by `created_at`. Same shape as `mapIssueComments`, just keyed off the PR's
-     * review-comment stream. The `in_reply_to_id` GitHub field is ignored — we keep one chain
-     * per PR rather than per review thread.
+     * Structure:
+     * - **Root**: the PR's `body` itself (from `keep-pulls.jsonl`), parented to nothing.
+     * - **Top-level comments** (regular PR conversation comments + review-comments with
+     *   no `in_reply_to_id`) chain to one another by `created_at`; the first chains to
+     *   the PR body. Replies are skipped over when computing the chain — the next
+     *   top-level comment links to the previous *top-level* comment.
+     * - **Replies** (`in_reply_to_id != null`, only on review comments — issue-style
+     *   comments don't have replies in GitHub's model) hang off their parent via the
+     *   `in_reply_to_id` value, looked up against an in-flight ghId → allocated id map.
+     *   GitHub guarantees `in_reply_to_id` always references an earlier-created
+     *   same-PR comment, so a created_at sort processes parents before their replies.
+     *   Orphan replies (parent not in the scrape) are dropped with a WARN.
      */
-    private fun mapPrReviewThreadComments(proposalIntIds: Set<Int>): List<Comment> {
-        val byPr = readJsonlObjects(normalizedDir, "keep-pr-review-comments")
+    private fun mapPrReviewThreadComments(prToProposalMap: Map<Int, String>): List<Comment> {
+        val prBodies: Map<Int, JsonObject> = readJsonlObjects(normalizedDir, "keep-pulls")
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
-            .filter { it["_pr"]!!.jsonPrimitive.content.toInt() in proposalIntIds }
-            .groupBy { it["_pr"]!!.jsonPrimitive.content.toInt() }
+            .filter { it["number"]!!.jsonPrimitive.int in prToProposalMap.keys }
+            .associateBy { it["number"]!!.jsonPrimitive.int }
 
-        return byPr.flatMap { (prNumber, prComments) ->
-            val proposalId = prNumber.toString().padStart(4, '0')
-            val sorted = prComments.sortedBy { it.getJsonString("created_at") }
-            if (sorted.isEmpty()) return@flatMap emptyList()
+        val regularComments = readJsonlObjects(normalizedDir, "keep-pr-issuecomments")
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
+            .filter { it["_issue"]!!.jsonPrimitive.int in prToProposalMap.keys }
 
-            val rootJson = sorted.first()
+        val reviewComments = readJsonlObjects(normalizedDir, "keep-pr-review-comments")
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
+            .filter { it["_pr"]!!.jsonPrimitive.int in prToProposalMap.keys }
+
+        val byPr: Map<Int, List<JsonObject>> = (regularComments + reviewComments).groupBy {
+            it["_pr"]?.jsonPrimitive?.intOrNull
+                ?: it["_issue"]?.jsonPrimitive?.intOrNull
+                ?: error("PR comment row has neither _pr nor _issue meta: $it")
+        }
+
+        return prToProposalMap.flatMap { (prNumber, proposalId) ->
+            val prJson = prBodies[prNumber]
+            if (prJson == null) {
+                log.warn(
+                    "PR #{} not found in keep-pulls.jsonl; skipping comment chain for proposal {}",
+                    prNumber,
+                    proposalId
+                )
+                return@flatMap emptyList()
+            }
+
             val rootComment = Comment(
                 commentId = commentIds.nextId(),
-                authorId = resolveGHLogin(rootJson["user"]!!.jsonObject.getJsonString("login")),
+                authorId = resolveGHLogin(prJson["user"]!!.jsonObject.getJsonString("login")),
                 projectId = projectId,
                 proposalId = proposalId,
                 commentOnCommentId = null,
-                createdAt = rootJson.getJsonString("created_at"),
-                content = rootJson.getJsonStringOrNull("body").orEmpty(),
+                createdAt = prJson.getJsonString("created_at"),
+                content = prJson.getJsonStringOrNull("body").orEmpty(),
             )
-            sorted.drop(1).runningFold(rootComment) { previous, json ->
-                Comment(
+
+            val sorted = byPr[prNumber].orEmpty().sortedBy { it.getJsonString("created_at") }
+            val ghIdToAllocated = mutableMapOf<Long, Long>()
+            val emitted = mutableListOf<Comment>()
+            var lastTopLevel = rootComment
+
+            for (json in sorted) {
+                val ghId = json["id"]!!.jsonPrimitive.long
+                val parentGhId = json["in_reply_to_id"]?.jsonPrimitive?.longOrNull
+                val parentAllocated: Long? = if (parentGhId == null) {
+                    lastTopLevel.commentId
+                } else {
+                    ghIdToAllocated[parentGhId] ?: run {
+                        log.warn(
+                            "Dropping review comment {} in PR #{}: in_reply_to_id={} not in same PR's data",
+                            ghId, prNumber, parentGhId,
+                        )
+                        null
+                    }
+                }
+                if (parentAllocated == null) continue
+
+                val comment = Comment(
                     commentId = commentIds.nextId(),
                     authorId = resolveGHLogin(json["user"]!!.jsonObject.getJsonString("login")),
                     projectId = projectId,
                     proposalId = proposalId,
-                    commentOnCommentId = previous.commentId,
+                    commentOnCommentId = parentAllocated,
                     createdAt = json.getJsonString("created_at"),
                     content = json.getJsonStringOrNull("body").orEmpty(),
                 )
+                ghIdToAllocated[ghId] = comment.commentId
+                emitted += comment
+                // Only top-level comments advance the chain anchor. Replies hang off their
+                // own parent and don't displace the chain pointer.
+                if (parentGhId == null) lastTopLevel = comment
             }
+
+            listOf(rootComment) + emitted
         }
     }
 
@@ -655,23 +726,23 @@ class KeepMapper(
         return discussionLinks[1].toInt()
     }
 
+    /**
+     * Tries to find a `https://github.com/Kotlin/KEEP/discussions/<id>` URL in
+     * the discussion field and returns the `<id>`.
+     */
+    private fun String.extractPrIdFromDiscussionField(): Int? {
+        val prLinks = PR_URL_REGEX.find(this)?.groupValues ?: return null
+        assert(prLinks.size == 2) { "Unexpected number of matches: $prLinks in $this" }
+        return prLinks[1].toInt()
+    }
 
     private fun mapIssueComments(proposalIntIds: Set<Int>): List<Comment> {
-        // Some KEEP proposals are tracked as a PR rather than a separate issue. For those, the
-        // discussion thread lives in `keep-pr-issuecomments` rather than `keep-issue-comments`,
-        // and the "issue" entry in `keep-issues.jsonl` is GitHub's PR-as-issue projection (which
-        // is fine — it carries `number`, `body`, `user`, `created_at`, just like a real issue).
-        // Merge both comment streams into one lookup; dedupe by id (comment id is globally unique
-        // across both streams).
-        val issueToIssueComments = (
-                readJsonlObjects(normalizedDir, "keep-issue-comments") +
-                        readJsonlObjects(normalizedDir, "keep-pr-issuecomments")
-                )
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }   // GitHub comment IDs exceed Int range
+        val issueToIssueComments = readJsonlObjects(normalizedDir, "keep-issue-comments")
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
             .groupBy { it.getJsonString("_issue").toInt() }
 
         return readJsonlObjects(normalizedDir, "keep-issues")
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }   // GitHub issue IDs exceed Int range
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
             .filter {
                 it["number"]!!.jsonPrimitive.int in proposalIntIds
             }.flatMap { issue ->
@@ -714,6 +785,8 @@ class KeepMapper(
     companion object {
         private val DISCUSSION_URL_REGEX =
             Regex("""https://github\.com/Kotlin/KEEP/discussions/(\d+)""")
+        private val PR_URL_REGEX =
+            Regex("""https://github\.com/Kotlin/KEEP/pull/(\d+)""")
         private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d{4})""")
     }
 }
