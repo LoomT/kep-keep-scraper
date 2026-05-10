@@ -23,6 +23,13 @@ class KeepMapper(
     private val personByEmail = mutableMapOf<String, Long>()
     private val personByName = mutableMapOf<String, Long>()
 
+    private data class CommitEnrichment(
+        /** Most-frequent git author/committer `name` seen alongside each email. */
+        val gitNameByEmail: Map<String, String>,
+        /** Most-frequent git author/committer `name` seen for each GH login. */
+        val gitFullNameByLogin: Map<String, String>,
+    )
+
     private val proposalTextMetaKeysSeen = mutableSetOf<String>()
 
     fun mapAll(): Rows {
@@ -51,24 +58,44 @@ class KeepMapper(
         val relatedProposals = validRelated.distinct()
 
         populateUserEmails()
+        val (gitNameByEmail, gitFullNameByLogin) = populateCommitterAuthorEmails()
 
         val ghLoginsToNames = ghLoginsToNames()
 
         val (organisations, affiliations) = mapOrgsAndAffiliations()
 
+        // Person rows are emitted once per distinct id. Person.full_name is taken from
+        // keep-users.jsonl when available (the user's self-declared name), falling back to
+        // the most-frequent git author/committer name when keep-users has nothing, and
+        // finally to the proposal-author meta (for name-only persons with no GH login).
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
+        val emittedPersonIds = mutableSetOf<Long>()
+        fun emitPerson(id: Long, fullName: String?) {
+            if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
+        }
+
         for ((login, id) in personByGHLogin) {
-            persons += Person(personId = id, fullName = null)
-            val name = ghLoginsToNames[login]
-            personUsernames += PersonUsername(personId = id, domain = "github.com", username = login, realName = name)
+            val realName = ghLoginsToNames[login] ?: gitFullNameByLogin[login]
+            emitPerson(id, realName)
+            personUsernames += PersonUsername(
+                personId = id,
+                domain = "github.com",
+                username = login,
+                realName = realName
+            )
         }
         for ((email, id) in personByEmail) {
-            persons += Person(personId = id, fullName = null)
-            personUsernames += PersonUsername(personId = id, domain = "email", username = email, realName = null)
+            emitPerson(id, null) // login already supplied fullName when applicable
+            personUsernames += PersonUsername(
+                personId = id,
+                domain = "email",
+                username = email,
+                realName = gitNameByEmail[email],
+            )
         }
         for ((name, id) in personByName) {
-            persons += Person(personId = id, fullName = name)
+            emitPerson(id, name)
         }
 
         val rows = Rows(
@@ -291,9 +318,6 @@ class KeepMapper(
 
     private fun resolveGHLogin(login: String): Long =
         personByGHLogin.getOrPut(login) { personIds.nextId() }
-
-    private fun resolveEmail(email: String): Long =
-        personByEmail.getOrPut(email) { personIds.nextId() }
 
     private fun resolveName(name: String): Long =
         personByName.getOrPut(name) { personIds.nextId() }
@@ -547,6 +571,90 @@ class KeepMapper(
                 val email = userJson.getJsonString("email")
                 personByEmail[email] = resolveGHLogin(login)
             }
+
+    /**
+     * Walks `keep-commits.jsonl` and `keep-pr-commits.jsonl` and, for every commit role
+     * (author / committer) where GitHub successfully resolved the git email to a GitHub
+     * `login`, links the git `name` and `email` to that login's existing person row.
+     *
+     * - **Email → person**: added to [personByEmail] under the login's id, so the
+     *   build-persons loop emits a `PersonUsername(domain="email", username=<email>,
+     *   real_name=<most-popular name for this email>)` row attached to the same person
+     *   as the github.com username row. First link wins for the *email→person* mapping —
+     *   once an email is claimed by a login, a later commit with a different login on
+     *   the same email is ignored. (Names are tallied independently and the popular
+     *   pick wins regardless of which commit linked the email first.)
+     * - **Per-email name tally** and **per-login name tally**: built locally and reduced
+     *   to the most-frequent name. Multiple variants are kept so we don't lock to a
+     *   one-off typo — e.g., "Mike Smith" (50 commits) wins over "Michael Smith" (1).
+     *
+     * Commits where GitHub couldn't match the email back to a login (`author`/`committer`
+     * is `null` in the JSON) are skipped.
+     */
+    private fun populateCommitterAuthorEmails(): CommitEnrichment {
+        val nameCountsByEmail = mutableMapOf<String, MutableMap<String, Int>>()
+        val nameCountsByLogin = mutableMapOf<String, MutableMap<String, Int>>()
+        var processed = 0
+        var roleRecordsWithLogin = 0
+        var newEmailLinks = 0
+        for (stream in COMMIT_STREAMS) {
+            for (commit in readJsonlObjects(normalizedDir, stream)) {
+                processed++
+                val gitCommit = commit["commit"] as? JsonObject ?: continue
+                for (role in COMMIT_ROLES) {
+                    val gitInfo = gitCommit[role] as? JsonObject ?: continue
+                    val ghLogin = (commit[role] as? JsonObject)
+                        ?.getJsonStringOrNull("login")
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val gitName = gitInfo.getJsonStringOrNull("name")?.takeIf { it.isNotBlank() }
+                    val gitEmail = gitInfo.getJsonStringOrNull("email")
+                        ?.takeIf { it.isNotBlank() }?.lowercase()
+
+                    roleRecordsWithLogin++
+                    val personId = resolveGHLogin(ghLogin)
+
+                    if (personByEmail[gitEmail] != null && personByEmail[gitEmail] != personId) {
+                        val existingPersonId = personByEmail[gitEmail]!!
+                        val existingLogin = personByGHLogin.entries.find { it.value == existingPersonId }?.key
+                        log.warn(
+                            """
+                            Duplicate email-to-login mapping for $gitEmail:
+                                - existing: $existingLogin
+                                - new: $ghLogin
+                            Skipping commit: $commit
+                        """
+                        )
+                    }
+
+                    if (gitEmail != null && personByEmail.putIfAbsent(gitEmail, personId) == null) {
+                        newEmailLinks++
+                    }
+                    if (gitEmail != null && gitName != null) {
+                        nameCountsByEmail.getOrPut(gitEmail) { mutableMapOf() }
+                            .merge(gitName, 1) { a, b -> a + b }
+                    }
+                    if (gitName != null) {
+                        nameCountsByLogin.getOrPut(ghLogin) { mutableMapOf() }
+                            .merge(gitName, 1) { a, b -> a + b }
+                    }
+                }
+            }
+        }
+
+        val gitNameByEmail: Map<String, String> = nameCountsByEmail.mapValues { (_, counts) ->
+            counts.maxByOrNull { it.value }!!.key
+        }
+        val gitFullNameByLogin: Map<String, String> = nameCountsByLogin.mapValues { (_, counts) ->
+            counts.maxByOrNull { it.value }!!.key
+        }
+
+        log.info(
+            "Commit enrichment: scanned {} commits ({} author/committer records with login); " +
+                    "newly linked {} emails to GH logins; {} logins now have a git name tally",
+            processed, roleRecordsWithLogin, newEmailLinks, gitFullNameByLogin.size,
+        )
+        return CommitEnrichment(gitNameByEmail, gitFullNameByLogin)
+    }
 
     /**
      * Associates GitHub logins from [personByGHLogin] with their names from `keep-users.jsonl`.
@@ -945,6 +1053,10 @@ class KeepMapper(
         private val PR_URL_REGEX =
             Regex("""https://github\.com/Kotlin/KEEP/pull/(\d+)""")
         private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d{4})""")
+
+        /** Streams scanned by [populateCommitterAuthorEmails] for git author/committer info. */
+        private val COMMIT_STREAMS = listOf("keep-commits", "keep-pr-commits")
+        private val COMMIT_ROLES = listOf("author", "committer")
 
         /**
          * Whitelist of email domains we trust to indicate a real company affiliation.
