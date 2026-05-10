@@ -50,13 +50,18 @@ class KeepMapper(
         }
         val relatedProposals = validRelated.distinct()
 
+        populateUserEmails()
+
+        val ghLoginsToNames = ghLoginsToNames()
+
         val (organisations, affiliations) = mapOrgsAndAffiliations()
 
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
         for ((login, id) in personByGHLogin) {
             persons += Person(personId = id, fullName = null)
-            personUsernames += PersonUsername(personId = id, domain = "github.com", username = login, realName = null)
+            val name = ghLoginsToNames[login]
+            personUsernames += PersonUsername(personId = id, domain = "github.com", username = login, realName = name)
         }
         for ((email, id) in personByEmail) {
             persons += Person(personId = id, fullName = null)
@@ -526,6 +531,38 @@ class KeepMapper(
         }
         return rawStatus to null
     }
+
+    /**
+     * Populates emails in [personByEmail] from existing GitHub logins in [personByGHLogin].
+     *
+     * Should run after [personByGHLogin] is fully populated.
+     */
+    private fun populateUserEmails() =
+        readJsonlObjects(normalizedDir, "keep-users")
+            .keepLatestScrapesBy { it.getJsonString("login") }
+            .filter { it.getJsonString("login") in personByGHLogin.keys }
+            .filter { it.getJsonStringOrNull("email") != null }
+            .forEach { userJson ->
+                val login = userJson.getJsonString("login")
+                val email = userJson.getJsonString("email")
+                personByEmail[email] = resolveGHLogin(login)
+            }
+
+    /**
+     * Associates GitHub logins from [personByGHLogin] with their names from `keep-users.jsonl`.
+     *
+     * Should run after [personByGHLogin] is fully populated.
+     */
+    private fun ghLoginsToNames(): Map<String, String> =
+        readJsonlObjects(normalizedDir, "keep-users")
+            .keepLatestScrapesBy { it.getJsonString("login") }
+            .filter { it.getJsonString("login") in personByGHLogin.keys }
+            .filterNot { it.getJsonStringOrNull("name").isNullOrBlank() }
+            .associate { userJson ->
+                val login = userJson.getJsonString("login")
+                val name = userJson.getJsonString("name")
+                login to name
+            }
 
     /**
      * Builds the [Organisation] and [Affiliation] rows from three sources:
