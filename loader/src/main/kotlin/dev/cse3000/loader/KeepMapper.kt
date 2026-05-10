@@ -22,6 +22,7 @@ class KeepMapper(
     private val personByGHLogin = mutableMapOf<String, Long>()
     private val personByEmail = mutableMapOf<String, Long>()
     private val personByName = mutableMapOf<String, Long>()
+    private val proposalsByPerson = mutableMapOf<Long, MutableSet<String>>()
 
     private data class CommitEnrichment(
         /** Most-frequent git author/committer `name` seen alongside each email. */
@@ -62,12 +63,99 @@ class KeepMapper(
 
         val ghLoginsToNames = ghLoginsToNames()
 
+        // === Resolve proposal-meta-text authors (currently in personByName) to GH logins or
+        // git emails, but ONLY when the same name appears as a git author/committer on a
+        // commit to that proposal's markdown — strong evidence the proposal-author actually
+        // committed to their own proposal. Direction: collapse the login/email-anchored
+        // person INTO the name-only person (which keeps the proposal-author's display name
+        // canonical and matches the IdAllocator order — name-only ids were allocated first).
+        // Runs after every other person enrichment so personByGHLogin / personByEmail are
+        // fully populated; the resulting `updatedPersonIdMap` is applied transitively below.
+        val updatedPersonIdMap = mutableMapOf<Long, Long>()
+        val claimedLogins = mutableSetOf<String>()
+        val claimedEmails = mutableSetOf<String>()
+        val loginOrEmailByProposalAuthor = buildLoginOrEmailByProposalAuthor()
+        var resolutionConflicts = 0
+
+        for ((name, nameOnlyPersonId) in personByName) {
+            val nameKey = name.replace(".", " ").lowercase()
+            val proposalIds = proposalsByPerson[nameOnlyPersonId] ?: continue
+            for (proposalId in proposalIds) {
+                val (ghLogin, gitEmail) = loginOrEmailByProposalAuthor[proposalId to nameKey] ?: continue
+                when {
+                    ghLogin != null -> {
+                        if (ghLogin in claimedLogins) {
+                            // Already linked to a different name-only person in a prior iteration.
+                            if (personByGHLogin[ghLogin] != nameOnlyPersonId) {
+                                log.warn(
+                                    "Conflict: GH login '{}' already linked to person {}; can't also link to name-only person {} ('{}', proposal {})",
+                                    ghLogin, personByGHLogin[ghLogin], nameOnlyPersonId, name, proposalId,
+                                )
+                                resolutionConflicts++
+                            }
+                            continue
+                        }
+                        claimedLogins += ghLogin
+                        val oldLoginId = personByGHLogin[ghLogin]
+                        if (oldLoginId == nameOnlyPersonId) continue
+                        personByGHLogin[ghLogin] = nameOnlyPersonId
+                        if (oldLoginId != null) updatedPersonIdMap[oldLoginId] = nameOnlyPersonId
+                    }
+
+                    gitEmail != null -> {
+                        if (gitEmail in claimedEmails) {
+                            if (personByEmail[gitEmail] != nameOnlyPersonId) {
+                                log.warn(
+                                    "Conflict: email '{}' already linked to person {}; can't also link to name-only person {} ('{}', proposal {})",
+                                    gitEmail, personByEmail[gitEmail], nameOnlyPersonId, name, proposalId,
+                                )
+                                resolutionConflicts++
+                            }
+                            continue
+                        }
+                        claimedEmails += gitEmail
+                        val oldEmailId = personByEmail[gitEmail]
+                        if (oldEmailId == nameOnlyPersonId) continue
+                        personByEmail[gitEmail] = nameOnlyPersonId
+                        if (oldEmailId != null) updatedPersonIdMap[oldEmailId] = nameOnlyPersonId
+                    }
+                }
+            }
+        }
+
+        // Transitive closure of the substitution map. Defensive: if A→B and B→C ever co-exist
+        // (shouldn't with the claim-set guards above, but cheap to compute), follow the chain.
+        val closedSub: Map<Long, Long> = buildMap {
+            for (k in updatedPersonIdMap.keys) {
+                var cur = k
+                val seen = mutableSetOf<Long>()
+                while (cur in updatedPersonIdMap && seen.add(cur)) cur = updatedPersonIdMap[cur]!!
+                put(k, cur)
+            }
+        }
+        val sub: (Long) -> Long = { id -> closedSub[id] ?: id }
+
+        // Apply the closure to every map so later reads (mapOrgsAndAffiliations, the persons
+        // build below, and the comments substitution) all see canonical ids. In particular,
+        // emails registered to an old login id by populateUserEmails/populateCommitterAuthor-
+        // Emails get rewritten to the canonical name-only id here.
+        for (k in personByGHLogin.keys.toList()) personByGHLogin[k] = sub(personByGHLogin[k]!!)
+        for (k in personByEmail.keys.toList()) personByEmail[k] = sub(personByEmail[k]!!)
+        for (k in personByName.keys.toList()) personByName[k] = sub(personByName[k]!!)
+
+        log.info(
+            "Proposal author resolution: {} login/email-anchored persons merged into name-only persons; {} conflicts skipped",
+            updatedPersonIdMap.size, resolutionConflicts,
+        )
+
         val (organisations, affiliations) = mapOrgsAndAffiliations()
 
-        // Person rows are emitted once per distinct id. Person.full_name is taken from
-        // keep-users.jsonl when available (the user's self-declared name), falling back to
-        // the most-frequent git author/committer name when keep-users has nothing, and
-        // finally to the proposal-author meta (for name-only persons with no GH login).
+        // Person rows are emitted once per distinct id (post-substitution). Person.full_name
+        // is taken from keep-users.jsonl when available (the user's self-declared name),
+        // falling back to the most-frequent git author/committer name, then to the proposal-
+        // meta name (for name-only persons with no GH login). The proposal-meta name also
+        // wins by default for ids that were merge targets — it's emitted by the personByName
+        // loop, but only kicks in if the personByGHLogin loop didn't already attach a name.
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
         val emittedPersonIds = mutableSetOf<Long>()
@@ -75,6 +163,9 @@ class KeepMapper(
             if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
         }
 
+        for ((name, id) in personByName) {
+            emitPerson(id, name)
+        }
         for ((login, id) in personByGHLogin) {
             val realName = ghLoginsToNames[login] ?: gitFullNameByLogin[login]
             emitPerson(id, realName)
@@ -82,20 +173,17 @@ class KeepMapper(
                 personId = id,
                 domain = "github.com",
                 username = login,
-                realName = realName
+                realName = realName,
             )
         }
         for ((email, id) in personByEmail) {
-            emitPerson(id, null) // login already supplied fullName when applicable
+            emitPerson(id, null) // fullName already supplied by the 2 loops above
             personUsernames += PersonUsername(
                 personId = id,
                 domain = "email",
                 username = email,
                 realName = gitNameByEmail[email],
             )
-        }
-        for ((name, id) in personByName) {
-            emitPerson(id, name)
         }
 
         val rows = Rows(
@@ -113,10 +201,11 @@ class KeepMapper(
             affiliations = affiliations,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
-            proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
+            proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions }
+                .map { it.copy(authorId = sub(it.authorId)) },
             stageHistory = proposalGroups.flatMap { it.stages },
             relatedProposals = relatedProposals,
-            comments = comments,
+            comments = comments.map { it.copy(authorId = sub(it.authorId)) },
         )
 
         log.info("Meta keys seen: {}", proposalTextMetaKeysSeen)
@@ -224,7 +313,7 @@ class KeepMapper(
                         projectId = projectId,
                         proposalId = proposalId,
                         revisionIndex = proposalCommit.index,
-                        authorId = resolveName(name),
+                        authorId = resolveAuthor(name, proposalId),
                     )
                 }
             }
@@ -274,6 +363,41 @@ class KeepMapper(
     }
 
     /**
+     * Best-effort `(proposalId, lowercased name) → (ghLogin, gitEmail)` map, derived from
+     * `keep-commits.jsonl` (which contains commits scoped to proposal markdown files via
+     * the `_path` meta). For every commit's author/committer, we record a "this name committed to this proposal"
+     * entry — letting [mapProposals] upgrade matching proposal-meta-text authors from name-only
+     * resolution to a real GH login or at least an email if GitHub account is not linked.
+     *
+     * On duplicate key conflict, keeps the earlier entry.
+     */
+    private fun buildLoginOrEmailByProposalAuthor(): Map<Pair<String, String>, Pair<String?, String?>> {
+        val result = mutableMapOf<Pair<String, String>, Pair<String?, String?>>()
+        for (commit in readJsonlObjects(normalizedDir, "keep-commits")) {
+            val path = commit.getJsonString("_path")
+            val proposalId = path.proposalPathToId()
+            val gitCommit = commit["commit"] as? JsonObject ?: continue
+            for (role in COMMIT_ROLES) {
+                val gitInfo = gitCommit[role] as? JsonObject ?: continue
+                val ghLogin = (commit[role] as? JsonObject)
+                    ?.getJsonStringOrNull("login")
+                    ?.takeIf { it.isNotBlank() }
+                val gitEmail = gitInfo.getJsonStringOrNull("email")
+                    ?.takeIf { it.isNotBlank() }
+                if (ghLogin == null && gitEmail == null) continue
+                val gitName = gitInfo.getJsonStringOrNull("name")
+                    ?.replace(".", " ")
+                    ?.takeIf { it.isNotBlank() } ?: continue
+                val existingPair = result[proposalId to gitName.lowercase()]
+                if (existingPair == null) result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
+                else if (existingPair.first == null && ghLogin != null)
+                    result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
+            }
+        }
+        return result
+    }
+
+    /**
      * Pulls all `KEEP-NNNN` references from a `"Superseded by …"` status string and returns
      * each as the bare 4-digit proposal_id (e.g. `"0367"`, not `"KEEP-0367"`). Returns an
      * empty list if the status doesn't contain "superseded" (case-insensitive). Handles both
@@ -319,8 +443,11 @@ class KeepMapper(
     private fun resolveGHLogin(login: String): Long =
         personByGHLogin.getOrPut(login) { personIds.nextId() }
 
-    private fun resolveName(name: String): Long =
-        personByName.getOrPut(name) { personIds.nextId() }
+    private fun resolveAuthor(name: String, proposalId: String): Long {
+        val personId = personByName.getOrPut(name) { personIds.nextId() }
+        proposalsByPerson.getOrPut(personId) { mutableSetOf() }.add(proposalId)
+        return personId
+    }
 
     private fun JsonObject.getJsonString(key: String): String {
         val jsonPrimitive = this[key]!!.jsonPrimitive
@@ -606,7 +733,9 @@ class KeepMapper(
                     val ghLogin = (commit[role] as? JsonObject)
                         ?.getJsonStringOrNull("login")
                         ?.takeIf { it.isNotBlank() } ?: continue
-                    val gitName = gitInfo.getJsonStringOrNull("name")?.takeIf { it.isNotBlank() }
+                    val gitName = gitInfo.getJsonStringOrNull("name")
+                        ?.replace(".", " ") // some names use a dot instead of space
+                        ?.takeIf { it.isNotBlank() }
                     val gitEmail = gitInfo.getJsonStringOrNull("email")
                         ?.takeIf { it.isNotBlank() }?.lowercase()
 
@@ -622,7 +751,7 @@ class KeepMapper(
                                 - existing: $existingLogin
                                 - new: $ghLogin
                             Skipping commit: $commit
-                        """
+                            """
                         )
                     }
 
@@ -750,6 +879,17 @@ class KeepMapper(
 
         // Source 2 + 3: company free-text and (whitelisted-only) email domains.
         val emailDomainCounts = mutableMapOf<String, Int>()
+
+        fun processEmail(email: String, personId: Long) {
+            val domain = email.substringAfter('@', missingDelimiterValue = "").trim().lowercase()
+            if (domain.isNotEmpty()) {
+                emailDomainCounts.merge(domain, 1) { a, b -> a + b }
+                if (domain in BUSINESS_EMAIL_DOMAINS) {
+                    addAffiliation(ensureOrg(domain), personId)
+                }
+            }
+        }
+
         for (user in users) {
             val login = user.getJsonString("login")
             val personId = resolveGHLogin(login)
@@ -759,14 +899,12 @@ class KeepMapper(
             }
 
             user.getJsonStringOrNull("email")?.takeIf { it.isNotBlank() }?.let { email ->
-                val domain = email.substringAfter('@', missingDelimiterValue = "").trim().lowercase()
-                if (domain.isNotEmpty()) {
-                    emailDomainCounts.merge(domain, 1) { a, b -> a + b }
-                    if (domain in BUSINESS_EMAIL_DOMAINS) {
-                        addAffiliation(ensureOrg(domain), personId)
-                    }
-                }
+                processEmail(email, personId)
             }
+        }
+
+        for ((email, personId) in personByEmail) {
+            processEmail(email, personId)
         }
 
         if (emailDomainCounts.isNotEmpty()) {
