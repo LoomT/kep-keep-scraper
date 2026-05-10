@@ -40,13 +40,14 @@ class KeepMapper(
         val proposalIntIds = proposals.map { it.proposalId.toInt() }.toSet()
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
-        val discussionToProposalMap = proposalGroups
-            .mapNotNull { group -> group.discussionId?.let { it to group.proposal.proposalId } }
+        val discussionToProposalsMap = proposalGroups
+            .mapNotNull { group -> group.discussionId?.let { it to setOf(group.proposal.proposalId) } }
             .toMap()
+            .plus(mapOf(462 to setOf("0446", "0447"), 464 to setOf("0412"))) // manually linked discussions
         val prToProposalMap = proposalGroups
             .mapNotNull { group -> group.prId?.let { it to group.proposal.proposalId } }
             .toMap()
-        val comments = mapComments(proposalIntIds, discussionToProposalMap, prToProposalMap)
+        val comments = mapComments(proposalIntIds, discussionToProposalsMap, prToProposalMap)
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
         val (validRelated, danglingRelated) = rawRelated.partition { it.proposalId in proposalIds }
@@ -926,11 +927,11 @@ class KeepMapper(
 
     private fun mapComments(
         proposalIntIds: Set<Int>,
-        discussionToProposalMap: Map<Int, String>,
+        discussionToProposalsMap: Map<Int, Set<String>>,
         prToProposalMap: Map<Int, String>
     ): List<Comment> {
         val issueComments = mapIssueComments(proposalIntIds)
-        val discussionComments = mapDiscussions(discussionToProposalMap)
+        val discussionComments = mapDiscussions(discussionToProposalsMap)
         val reviewThreadComments = mapPrReviewThreadComments(prToProposalMap)
         return issueComments + discussionComments + reviewThreadComments
     }
@@ -1034,7 +1035,7 @@ class KeepMapper(
         }
     }
 
-    private fun mapDiscussions(discussionToProposalMap: Map<Int, String>): List<Comment> {
+    private fun mapDiscussions(discussionToProposalsMap: Map<Int, Set<String>>): List<Comment> {
         val discussionCommentJsons = readJsonlObjects(normalizedDir, "keep-discussion-comments")
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
 
@@ -1043,24 +1044,27 @@ class KeepMapper(
             .filter { it["category"]!!.jsonObject.getJsonString("name") == "keep-discussions" }
             .mapNotNull {
                 val number = it["number"]!!.jsonPrimitive.int
-                val proposalId = discussionToProposalMap[number]
-                if (proposalId == null) {
+                val proposalIds = discussionToProposalsMap[number]
+                if (proposalIds.isNullOrEmpty()) {
                     log.warn(
                         "Skipping discussion #{}: no proposal links to this discussion",
                         number,
                     )
                     return@mapNotNull null
                 }
-                DiscussionThread(
-                    proposalId,
-                    commentIds.nextId(),
-                    it["number"]!!.jsonPrimitive.int,
-                    it.getJsonString("title"),
-                    it.getJsonStringOrNull("body").orEmpty(),
-                    it["author"]!!.jsonObject.getJsonString("login"),
-                    it.getJsonString("createdAt"),
-                )
+                proposalIds.map { proposalId ->
+                    DiscussionThread(
+                        proposalId,
+                        commentIds.nextId(),
+                        it["number"]!!.jsonPrimitive.int,
+                        it.getJsonString("title"),
+                        it.getJsonStringOrNull("body").orEmpty(),
+                        it["author"]!!.jsonObject.getJsonString("login"),
+                        it.getJsonString("createdAt"),
+                    )
+                }
             }
+            .flatten()
             .toList()
 
         val discussionComments = discussionThreads.flatMap { discussionThread ->
