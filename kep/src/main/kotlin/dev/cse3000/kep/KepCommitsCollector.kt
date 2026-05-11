@@ -7,13 +7,13 @@ import org.slf4j.LoggerFactory
 
 /**
  * Fetches commits from `kubernetes/enhancements` via the GitHub REST API,
- * scoped to KEP files only (`keps/{sig}/{kep-name}/{kep.yaml,README.md}`).
+ * scoped to the `/kep` folder files minus some files that are not KEPs: [isKepFile].
  * Path discovery uses the local git mirror.
  */
 class KepCommitsCollector(private val ctx: ScrapeContext) {
     private val log = LoggerFactory.getLogger(KepCommitsCollector::class.java)
 
-    suspend fun run(incremental: Boolean, limit: Int? = null) {
+    suspend fun run(limit: Int? = null) {
         RepoMirror(KepScraper.OWNER, KepScraper.REPO, ctx.reposDir).use { mirror ->
             mirror.ensureUpToDate()
             val paths = mirror.listPathsAtHead { isKepFile(it) }
@@ -21,12 +21,11 @@ class KepCommitsCollector(private val ctx: ScrapeContext) {
             CommitsCollector(
                 client = ctx.client,
                 sink = ctx.sink,
-                cursor = ctx.cursor,
                 owner = KepScraper.OWNER,
                 repo = KepScraper.REPO,
                 repoTag = KepScraper.TAG,
                 pathFilter = paths,
-            ).run(incremental, limit)
+            ).run(limit)
         }
     }
 }

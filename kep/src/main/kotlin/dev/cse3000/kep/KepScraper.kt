@@ -42,7 +42,7 @@ class KepScraper(private val ctx: ScrapeContext) {
                 launch { KepRevisionCollector(ctx).run() }
             }
             if (ScrapePhase.COMMITS in applicable) {
-                launch { KepCommitsCollector(ctx).run(incremental, limit) }
+                launch { KepCommitsCollector(ctx).run(limit) }
             }
         }
         val laterPhases = phases.intersect(setOf(ScrapePhase.USERS, ScrapePhase.ORGS))

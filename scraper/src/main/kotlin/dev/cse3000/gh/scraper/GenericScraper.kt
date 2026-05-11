@@ -60,12 +60,11 @@ class GenericScraper(
                     CommitsCollector(
                         client = ctx.client,
                         sink = ctx.sink,
-                        cursor = ctx.cursor,
                         owner = owner,
                         repo = repo,
                         repoTag = tag,
                         pathFilter = null,
-                    ).run(incremental, limit)
+                    ).run(limit)
                 }
             }
         }

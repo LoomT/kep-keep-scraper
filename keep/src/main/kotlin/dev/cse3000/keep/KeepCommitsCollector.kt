@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
 class KeepCommitsCollector(private val ctx: ScrapeContext) {
     private val log = LoggerFactory.getLogger(KeepCommitsCollector::class.java)
 
-    suspend fun run(incremental: Boolean, limit: Int? = null) {
+    suspend fun run(limit: Int? = null) {
         RepoMirror(KeepScraper.OWNER, KeepScraper.REPO, ctx.reposDir).use { mirror ->
             mirror.ensureUpToDate()
             val paths = mirror.listPathsAtHead { it.startsWith("proposals/") && it.endsWith(".md") }
@@ -23,12 +23,11 @@ class KeepCommitsCollector(private val ctx: ScrapeContext) {
             CommitsCollector(
                 client = ctx.client,
                 sink = ctx.sink,
-                cursor = ctx.cursor,
                 owner = KeepScraper.OWNER,
                 repo = KeepScraper.REPO,
                 repoTag = KeepScraper.TAG,
                 pathFilter = paths,
-            ).run(incremental, limit)
+            ).run(limit)
         }
     }
 }

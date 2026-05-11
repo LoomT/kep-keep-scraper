@@ -27,35 +27,32 @@ import org.slf4j.LoggerFactory
 class CommitsCollector(
     private val client: GithubClient,
     private val sink: JsonlSink,
-    private val cursor: SyncCursor,
-    private val owner: String,
-    private val repo: String,
+    owner: String,
+    repo: String,
     private val repoTag: String,
     private val pathFilter: List<String>? = null,
 ) {
     private val slug = "$owner/$repo"
-    private val cursorKey = "$repoTag.commits.committer_date"
     private val log = LoggerFactory.getLogger("${CommitsCollector::class.java.name}.$repoTag")
 
-    suspend fun run(incremental: Boolean, limit: Int? = null) {
-        val sinceCursor = if (incremental) cursor.get(cursorKey) else null
+    suspend fun run(limit: Int? = null) {
         if (pathFilter == null) {
             log.info(
-                "Commits phase starting (slug={}, incremental={}, since={}, limit={}, mode=full-repo)",
-                slug, incremental, sinceCursor, limit,
+                "Commits phase starting (slug={}, limit={}, mode=full-repo)",
+                slug, limit,
             )
-            collectStream(path = null, sinceCursor = sinceCursor, limit = limit)
+            collectStream(path = null, limit = limit)
         } else {
             log.info(
-                "Commits phase starting (slug={}, incremental={}, since={}, limit={}, mode=per-path, paths={})",
-                slug, incremental, sinceCursor, limit, pathFilter.size,
+                "Commits phase starting (slug={}, limit={}, mode=per-path, paths={})",
+                slug, limit, pathFilter.size,
             )
             var processedAcrossPaths = 0
             var pathsDone = 0
             for (path in pathFilter) {
                 if (limit != null && processedAcrossPaths >= limit) break
                 val remaining = limit?.let { it - processedAcrossPaths }
-                processedAcrossPaths += collectStream(path = path, sinceCursor = sinceCursor, limit = remaining)
+                processedAcrossPaths += collectStream(path = path, limit = remaining)
                 pathsDone++
                 if (pathsDone % 50 == 0) {
                     log.info(
@@ -65,16 +62,15 @@ class CommitsCollector(
                 }
             }
             log.info(
-                "Commits phase done: {} paths, {} total commits emitted, max committer_date={}",
-                pathFilter.size, processedAcrossPaths, cursor.get(cursorKey),
+                "Commits phase done: {} paths, {} total commits emitted",
+                pathFilter.size, processedAcrossPaths,
             )
         }
     }
 
     /** Returns the number of commits emitted from this stream. */
-    private suspend fun collectStream(path: String?, sinceCursor: String?, limit: Int?): Int {
+    private suspend fun collectStream(path: String?, limit: Int?): Int {
         val params = mutableMapOf("per_page" to "100")
-        if (sinceCursor != null) params["since"] = sinceCursor
         if (path != null) params["path"] = path
         val url = client.apiUrl("/repos/$slug/commits", params)
         val flow = client.getJsonPaginated(url)
@@ -82,15 +78,11 @@ class CommitsCollector(
         var processed = 0
         capped.collect { item ->
             val obj = item.jsonObject
-            val committerDate = obj["commit"]?.jsonObject
-                ?.get("committer")?.jsonObject
-                ?.get("date")?.jsonPrimitive?.contentOrNull
             val meta = buildMap {
                 put("repo", slug)
                 if (path != null) put("path", path)
             }
             sink.emit("$repoTag-commits", obj, meta)
-            if (committerDate != null) cursor.advance(cursorKey, committerDate)
             processed++
         }
         return processed

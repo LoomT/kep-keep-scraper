@@ -37,7 +37,7 @@ class KeepScraper(private val ctx: ScrapeContext) {
                 launch { KeepRevisionCollector(ctx).run() }
             }
             if (ScrapePhase.COMMITS in phases) {
-                launch { KeepCommitsCollector(ctx).run(incremental, limit) }
+                launch { KeepCommitsCollector(ctx).run(limit) }
             }
         }
         val laterPhases = phases.intersect(setOf(ScrapePhase.USERS, ScrapePhase.ORGS))
