@@ -119,7 +119,7 @@ class KepMapper(
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
             .filter {
                 val p = it.getJsonString("path")
-                p.endsWith(".md") && p.count { c -> c == '/' } == 2 && p.startsWith("keps/")
+                p.endsWith(".md", ignoreCase = true) && p.count { c -> c == '/' } == 2 && p.startsWith("keps/")
             }
             .groupBy { it.getJsonString("path") }
             .toList()
@@ -132,7 +132,9 @@ class KepMapper(
 
                 val oldPaths = oldFormatByPath.filter { (oldPath, _) ->
                     oldPath.startsWith("$sigDir/") &&
-                            extractSlug(oldPath.substringAfterLast('/').removeSuffix(".md")) == dirSlug
+                            extractSlug(
+                                oldPath.substringAfterLast('/').removeSuffix(".md").removeSuffix(".MD")
+                            ) == dirSlug
                 }
                 if (oldPaths.size > 1) {
                     log.warn(
@@ -156,8 +158,8 @@ class KepMapper(
 
                 val newRawCommits = jsons.groupBy { it.getJsonString("commit_sha") }
                     .map { (sha, group) ->
-                        val yaml = group.find { it.getJsonString("path").endsWith("kep.yaml") }
-                        val readme = group.find { it.getJsonString("path").endsWith("README.md") }
+                        val yaml = group.find { it.getJsonString("path").endsWith("kep.yaml", ignoreCase = true) }
+                        val readme = group.find { it.getJsonString("path").endsWith("README.md", ignoreCase = true) }
                         RawCommit(
                             commitSha = sha,
                             committedAt = group.first().getJsonString("committed_at"),
@@ -203,26 +205,22 @@ class KepMapper(
      * revision at most.
      */
     private fun buildProposalGroup(dir: String, proposalId: String, rawCommits: List<RawCommit>): ProposalGroup? {
-        val firstBodyIndex = rawCommits.indexOfFirst { it.readme != null || it.oldFormat != null }
+        val extracted = rawCommits.map { it to extractYamlAndBody(it) }
+        val firstBodyIndex = extracted.indexOfFirst { it.second.second != null }
         if (firstBodyIndex < 0) {
-            log.warn("Skipping {}: no commit touched README.md, kep.yaml only? Or no old-format match", dir)
+            log.error("Skipping {}: no commit had body content (readme/old-format)", dir)
             return null
         }
 
-        val first = rawCommits[firstBodyIndex]
-        val firstBody = first.readme?.getJsonString("content_text")
-            ?: first.oldFormat!!.getJsonString("content_text")
-        val folded: List<FoldedCommit> = rawCommits.drop(firstBodyIndex + 1).runningFold(
-            FoldedCommit(first.commitSha, first.committedAt, first.yaml, firstBody)
-        ) { prev, cur ->
-            val newBody = cur.readme?.getJsonString("content_text")
-                ?: cur.oldFormat?.getJsonString("content_text")
-                ?: prev.body
+        val (firstRc, firstYb) = extracted[firstBodyIndex]
+        val folded: List<FoldedCommit> = extracted.drop(firstBodyIndex + 1).runningFold(
+            FoldedCommit(firstRc.commitSha, firstRc.committedAt, firstYb.first, firstYb.second!!)
+        ) { prev, (rc, yb) ->
             FoldedCommit(
-                commitSha = cur.commitSha,
-                committedAt = cur.committedAt,
-                yaml = cur.yaml ?: prev.yaml,
-                body = newBody,
+                commitSha = rc.commitSha,
+                committedAt = rc.committedAt,
+                yamlContent = yb.first ?: prev.yamlContent,
+                body = yb.second ?: prev.body,
             )
         }
 
@@ -231,7 +229,8 @@ class KepMapper(
         val metas = mutableListOf<KepYamlMeta>()
 
         for ((index, fc) in folded.withIndex()) {
-            val meta = fc.yaml?.let { parseYamlMeta(it, dir, fc.commitSha) } ?: EMPTY_META
+            val meta =
+                fc.yamlContent?.let { parseYamlMetaFromContent(it, "$dir@${fc.commitSha.take(8)}") } ?: EMPTY_META
             metas += meta
             revisions += ProposalRevision(
                 projectId = projectId,
@@ -332,13 +331,40 @@ class KepMapper(
         )
     }
 
-    private fun parseYamlMeta(yamlJson: JsonObject, dir: String, commitSha: String): KepYamlMeta {
-        val content = yamlJson.getJsonString("content_text")
+    private fun parseYamlMeta(yamlJson: JsonObject, dir: String, commitSha: String): KepYamlMeta =
+        parseYamlMetaFromContent(yamlJson.getJsonString("content_text"), "$dir@${commitSha.take(8)}")
+
+    /**
+     * Returns (yamlContentOrNull, bodyContentOrNull) for a raw commit. New-format commits
+     * map directly to their (yaml, readme) fields. Old-format commits split the `.md`
+     * content into front-matter (delimited by `---` lines) and the body — early KEPs
+     * embedded the yaml fields at the top of the markdown file.
+     */
+    private fun extractYamlAndBody(rc: RawCommit): Pair<String?, String?> {
+        rc.oldFormat?.let { json ->
+            val (front, body) = splitFrontMatter(json.getJsonString("content_text"))
+            return front to body
+        }
+        return rc.yaml?.getJsonString("content_text") to rc.readme?.getJsonString("content_text")
+    }
+
+    /**
+     * Splits an old-format `.md` content into front-matter yaml and body. Returns
+     * `(null, content)` when no `---`-delimited block is present at the start.
+     */
+    private fun splitFrontMatter(content: String): Pair<String?, String> {
+        val match = FRONT_MATTER_REGEX.matchAt(content, 0) ?: return null to content
+        val front = match.groupValues[1]
+        val body = content.substring(match.range.last + 1)
+        return front to body
+    }
+
+    private fun parseYamlMetaFromContent(content: String, label: String): KepYamlMeta {
         // Some KEP yamls have unquoted `@login` scalars (e.g. `- @liggitt`), which kaml rejects
         // because `@` is a reserved YAML indicator. Quote those before parsing.
         val sanitised = content.replace(UNQUOTED_AT_REGEX, "$1\"@$2\"")
         val parsed: YamlNode? = runCatching { Yaml.default.parseToYamlNode(sanitised) }
-            .onFailure { log.warn("yaml parse failed for {}@{}: {}", dir, commitSha.take(8), it.message) }
+            .onFailure { log.warn("yaml parse failed for {}: {}", label, it.message) }
             .getOrNull()
         val map = (parsed as? YamlMap) ?: return EMPTY_META
 
@@ -437,7 +463,7 @@ class KepMapper(
      * from clean repo-relative paths to external URLs to literal `"TBD"`.
      *
      * Resolution order:
-     * 1. Modern path `/keps/<sig>/NNNN-<slug>` → `"NNNN"`.
+     * 1. Modern path `/keps/<sig>/NNNN-<slug>` → `"NNNN"`. (null if NNNN is a template number)
      * 2. Old-format path `/keps/<sig>/<date>-<slug>.md` or `/keps/<sig>/<slug>.md` → look up
      *    the slug in [proposalIdBySlug] (built from the modern dir set).
      * 3. Otherwise null.
@@ -450,10 +476,13 @@ class KepMapper(
         val segment = pathMatch.groupValues[1]
             .removeSuffix("/")
             .removeSuffix(".md")
+            .removeSuffix(".MD")
             .removeSuffix("/README")
         // Try modern form first.
         val leadingNumber = LEADING_KEP_NUMBER_REGEX.find(segment)?.groupValues?.get(1)
-        if (leadingNumber != null && leadingNumber.length <= 5) return leadingNumber
+        if (leadingNumber != null && leadingNumber.length <= 5) {
+            return if (leadingNumber !in TEMPLATE_KEP_NUMBERS) leadingNumber else null
+        }
         // Old-format fallback: slug-match against our known proposals.
         val slug = extractSlug(segment)
         return proposalIdBySlug[slug]
@@ -476,7 +505,7 @@ class KepMapper(
     private data class FoldedCommit(
         val commitSha: String,
         val committedAt: String,
-        val yaml: JsonObject?,
+        val yamlContent: String?,
         val body: String,
     )
 
@@ -512,6 +541,21 @@ class KepMapper(
 
         /** Matches an unquoted `@login` scalar after a YAML list dash. */
         private val UNQUOTED_AT_REGEX = Regex("""(?m)^(\s*-\s+)@([\w.-]+)\s*$""")
+
+        /**
+         * Matches a leading `---`-delimited front-matter block. Group 1 is the yaml body
+         * between the fences. The closing `---` must be on its own line.
+         */
+        private val FRONT_MATTER_REGEX = Regex(
+            """---\s*\r?\n(.*?)\r?\n---\s*(?:\r?\n|\z)""",
+            RegexOption.DOT_MATCHES_ALL,
+        )
+
+        /**
+         * These KEP numbers are reserved for templates and testing.
+         * They should be filtered out during processing.
+         */
+        private val TEMPLATE_KEP_NUMBERS = listOf("NNNN", "1234", "2345", "3456")
 
         private val EMPTY_META = KepYamlMeta(
             title = null,

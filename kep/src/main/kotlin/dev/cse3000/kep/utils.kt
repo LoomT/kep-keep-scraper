@@ -5,5 +5,5 @@ internal fun isKepFile(path: String): Boolean {
     val rest = path.removePrefix("keps/")
     if (rest.startsWith("NNNN-kep-template") || rest.startsWith("prod-readiness") || rest.startsWith("README.md")) return false
     if (rest.endsWith("OWNERS")) return false
-    return rest.endsWith(".md") || rest.endsWith(".yaml")
+    return rest.endsWith(".md", ignoreCase = true) || rest.endsWith(".yaml", ignoreCase = true)
 }
