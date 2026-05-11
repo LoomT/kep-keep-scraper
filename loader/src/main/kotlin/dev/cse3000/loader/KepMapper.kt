@@ -1,21 +1,77 @@
 package dev.cse3000.loader
 
+import com.charleskorn.kaml.*
+import kotlinx.serialization.json.JsonObject
+import org.slf4j.LoggerFactory
 import java.nio.file.Path
+
+private val log = LoggerFactory.getLogger(KepMapper::class.java)
 
 /**
  * Maps `kep-*.jsonl` streams (under [normalizedDir]) to typed [Rows] for the
  * KEP project.
+ *
+ * Each KEP lives in `keps/<sig>/<number>-<slug>/` and has two co-located files
+ * we care about: `kep.yaml` (structured metadata) and `README.md` (the proposal
+ * body). A single git commit usually touches both; we group revisions by
+ * directory, sort by commit time, and pair each commit's yaml with its readme
+ * (carrying forward the prior side when a commit touches only one).
+ *
+ * Early KEPs used a flat `keps/<sig>/<date>-<slug>.md` format. When such a file
+ * was later migrated to the modern split layout, we associate its history with
+ * the new dir by matching `<sig>` + the slug fragment, and treat each pre-
+ * migration commit as a body-only revision with no yaml meta.
+ *
+ * `proposal_id` is the bare KEP number (e.g. `"2313"`). A handful of dirs
+ * collide on this prefix (three `0000-*` and two `2133-*`); the first dir wins
+ * and the rest are dropped with a WARN.
  */
 class KepMapper(
     private val projectId: Int,
     private val normalizedDir: Path,
     private val personIds: IdAllocator,
-    private val organisationIds: IdAllocator,
-    private val commentIds: IdAllocator,
+    @Suppress("unused") private val organisationIds: IdAllocator,
+    @Suppress("unused") private val commentIds: IdAllocator,
 ) {
-    private val personByLogin = mutableMapOf<String, Long>()
+    private val personByGHLogin = mutableMapOf<String, Long>()
+
+    /**
+     * Slug → bare proposal_id, populated during [mapProposals]. Used to resolve see-also /
+     * replaces / superseded-by references whose value points at an old-style date-prefixed
+     * or unprefixed `.md` file rather than the modern numeric dir.
+     */
+    private val proposalIdBySlug = mutableMapOf<String, String>()
 
     fun mapAll(): Rows {
+        val proposalGroups = mapProposals()
+        val proposals = proposalGroups.map { it.proposal }
+        val proposalIds = proposals.map { it.proposalId }.toSet()
+
+        val rawRelated = proposalGroups.flatMap { it.relatedProposals }
+        val (validRelated, danglingRelated) = rawRelated.partition {
+            it.proposalId in proposalIds && it.relatedProposalId in proposalIds
+        }
+        for (r in danglingRelated.distinctBy { Triple(it.proposalId, it.type, it.relatedProposalId) }) {
+            log.warn(
+                "Dropping RelatedProposal({}, {}, {}): one side not in our proposal set",
+                r.proposalId, r.type, r.relatedProposalId,
+            )
+        }
+        // The schema PK on RelatedProposal is (proposal_id, related_proposal_id) — type is not
+        // part of the key. When the same edge appears with both `supersedes` and `related`
+        // (a KEP that lists another in *both* `replaces` and `see-also`), keep the stronger
+        // edge: supersedes wins over related.
+        val relatedProposals = validRelated
+            .groupBy { Quadruple(it.projectId, it.proposalId, it.relatedProjectId, it.relatedProposalId) }
+            .map { (_, group) ->
+                group.firstOrNull { it.type == "supersedes" } ?: group.first()
+            }
+
+        val persons = personByGHLogin.entries.map { (_, id) -> Person(personId = id, fullName = null) }
+        val personUsernames = personByGHLogin.entries.map { (login, id) ->
+            PersonUsername(personId = id, domain = "github.com", username = login, realName = null)
+        }
+
         val rows = Rows(
             projects = listOf(
                 Project(
@@ -25,17 +81,472 @@ class KepMapper(
                     copyright = "Apache-2.0",
                 ),
             ),
+            persons = persons,
+            personUsernames = personUsernames,
+            proposals = proposals,
+            proposalRevisions = proposalGroups.flatMap { it.revisions },
+            proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
+            stageHistory = proposalGroups.flatMap { it.stages },
+            relatedProposals = relatedProposals,
         )
 
-        // TODO: read JSONL streams from `normalizedDir`, build SchemaModel rows, fold into `rows`.
-        // See KeepMapper for the same pattern; the input streams differ by prefix.
-        // Recommended grouping for KEP proposals: group `kep-yaml-revisions` rows by `_dir`
-        // (the KEP directory keys/<sig>/<kep-name>/) — each unique dir is one Proposal.
+        log.info(
+            "KEP resolver counts: proposals={}, revisions={}, persons={}, related={}, dangling-related-dropped={}",
+            rows.proposals.size, rows.proposalRevisions.size, rows.persons.size,
+            rows.relatedProposals.size, danglingRelated.size,
+        )
+        log.info(
+            "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
+            rows.stageHistory.map { it.rawStatus to it.normalizedStatus }.distinct(),
+        )
 
         return rows
     }
 
-    @Suppress("unused")
-    private fun resolveLogin(login: String, fullName: String? = null): Long =
-        personByLogin.getOrPut(login) { personIds.nextId() }
+    private fun mapProposals(): List<ProposalGroup> {
+        val yamlByKey = readJsonlObjects(normalizedDir, "kep-yaml-revisions")
+            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .toList()
+        val readmeByKey = readJsonlObjects(normalizedDir, "kep-readme-revisions")
+            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .toList()
+
+        // Pre-migration single-file KEPs: `keps/<sig>/<dateOrSlug>-*.md` — exactly 3 path
+        // segments, ending in .md. PRR yaml files (`keps/prod-readiness/...`), example assets
+        // inside modern dirs, and other deep paths are ignored — they're not predecessors of
+        // a single modern KEP dir.
+        val oldFormatByPath = readJsonlObjects(normalizedDir, "kep-revisions-other")
+            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .filter {
+                val p = it.getJsonString("path")
+                p.endsWith(".md") && p.count { c -> c == '/' } == 2 && p.startsWith("keps/")
+            }
+            .groupBy { it.getJsonString("path") }
+            .toList()
+
+        val byDir: Map<String, List<RawCommit>> = (yamlByKey + readmeByKey)
+            .groupBy { it.getJsonString("dir") }
+            .mapValues { (dir, jsons) ->
+                val sigDir = dir.substringBeforeLast('/')                   // keps/sig-release
+                val dirSlug = extractSlug(dir.substringAfterLast('/'))      // artifact-management
+
+                val oldPaths = oldFormatByPath.filter { (oldPath, _) ->
+                    oldPath.startsWith("$sigDir/") &&
+                            extractSlug(oldPath.substringAfterLast('/').removeSuffix(".md")) == dirSlug
+                }
+                if (oldPaths.size > 1) {
+                    log.warn(
+                        "{}: {} candidate old-format paths matched same slug, picking first: {}",
+                        dir, oldPaths.size, oldPaths.map { it.first },
+                    )
+                }
+                if (oldPaths.isNotEmpty()) {
+                    log.info("Found old format for {}: {}", dir, oldPaths.first().first)
+                }
+
+                val oldRawCommits = oldPaths.firstOrNull()?.second.orEmpty().map { json ->
+                    RawCommit(
+                        commitSha = json.getJsonString("commit_sha"),
+                        committedAt = json.getJsonString("committed_at"),
+                        yaml = null,
+                        readme = null,
+                        oldFormat = json,
+                    )
+                }
+
+                val newRawCommits = jsons.groupBy { it.getJsonString("commit_sha") }
+                    .map { (sha, group) ->
+                        val yaml = group.find { it.getJsonString("path").endsWith("kep.yaml") }
+                        val readme = group.find { it.getJsonString("path").endsWith("README.md") }
+                        RawCommit(
+                            commitSha = sha,
+                            committedAt = group.first().getJsonString("committed_at"),
+                            yaml = yaml,
+                            readme = readme,
+                            oldFormat = null,
+                        )
+                    }
+
+                (oldRawCommits + newRawCommits).sortedBy { it.committedAt }
+            }
+
+        // Pass 1: claim a proposalId per dir, building proposalIdBySlug for later ref lookup.
+        // First-come wins on number collisions; the loser is dropped here.
+        val dirToProposalId = mutableMapOf<String, String>()
+        val claimedProposalIds = mutableSetOf<String>()
+        for ((dir, rawCommits) in byDir) {
+            val lastCommitWithYaml = rawCommits.lastOrNull { it.yaml != null }
+            val meta = lastCommitWithYaml?.yaml?.let { parseYamlMeta(it, dir, lastCommitWithYaml.commitSha) }
+            val id = meta?.kepNumber ?: dir.proposalIdFromDir() ?: continue
+            if (!claimedProposalIds.add(id)) {
+                log.warn("Dropping {}: bare-number proposal_id '{}' already claimed", dir, id)
+                continue
+            }
+            dirToProposalId[dir] = id
+            val slug = extractSlug(dir.substringAfterLast('/'))
+            proposalIdBySlug[slug] = id
+        }
+
+        // Pass 2: build the ProposalGroups using the now-populated proposalIdBySlug.
+        return byDir.mapNotNull { (dir, rawCommits) ->
+            val proposalId = dirToProposalId[dir] ?: return@mapNotNull null
+            buildProposalGroup(dir, proposalId, rawCommits)
+        }
+    }
+
+    /**
+     * Folds a dir's raw commit list into [ProposalRevision]s. Revisions start at the first
+     * commit that has a body (readme OR old-format `.md`); pre-migration commits emit
+     * body-only revisions (no yaml meta). Once yaml appears it's carried forward; readme
+     * likewise. Old-format and readme bodies aren't carried into each other — the migration
+     * commit usually adds the readme in the same commit, so the discontinuity is one
+     * revision at most.
+     */
+    private fun buildProposalGroup(dir: String, proposalId: String, rawCommits: List<RawCommit>): ProposalGroup? {
+        val firstBodyIndex = rawCommits.indexOfFirst { it.readme != null || it.oldFormat != null }
+        if (firstBodyIndex < 0) {
+            log.warn("Skipping {}: no commit touched README.md, kep.yaml only? Or no old-format match", dir)
+            return null
+        }
+
+        val first = rawCommits[firstBodyIndex]
+        val firstBody = first.readme?.getJsonString("content_text")
+            ?: first.oldFormat!!.getJsonString("content_text")
+        val folded: List<FoldedCommit> = rawCommits.drop(firstBodyIndex + 1).runningFold(
+            FoldedCommit(first.commitSha, first.committedAt, first.yaml, firstBody)
+        ) { prev, cur ->
+            val newBody = cur.readme?.getJsonString("content_text")
+                ?: cur.oldFormat?.getJsonString("content_text")
+                ?: prev.body
+            FoldedCommit(
+                commitSha = cur.commitSha,
+                committedAt = cur.committedAt,
+                yaml = cur.yaml ?: prev.yaml,
+                body = newBody,
+            )
+        }
+
+        val revisions = mutableListOf<ProposalRevision>()
+        val authorRevisions = mutableListOf<ProposalRevisionAuthor>()
+        val metas = mutableListOf<KepYamlMeta>()
+
+        for ((index, fc) in folded.withIndex()) {
+            val meta = fc.yaml?.let { parseYamlMeta(it, dir, fc.commitSha) } ?: EMPTY_META
+            metas += meta
+            revisions += ProposalRevision(
+                projectId = projectId,
+                proposalId = proposalId,
+                revisionIndex = index,
+                title = meta.title ?: dir.substringAfterLast('/'),
+                createdAt = fc.committedAt,
+                content = fc.body,
+                implementedAtVersion = meta.implementedAtVersion,
+            )
+            for (login in meta.authors.distinct()) {
+                authorRevisions += ProposalRevisionAuthor(
+                    projectId = projectId,
+                    proposalId = proposalId,
+                    revisionIndex = index,
+                    authorId = resolveGHLogin(login),
+                )
+            }
+        }
+
+        // Topic: prefer the yaml's owning-sig (most descriptive once stripped of the "sig-"
+        // prefix); fall back to the dir's penultimate segment, which always exists.
+        val topic = metas.firstNotNullOfOrNull { it.owningSig }?.removePrefix("sig-")
+            ?: dir.substringBeforeLast('/').substringAfterLast('/').removePrefix("sig-")
+
+        val proposal = Proposal(
+            projectId = projectId,
+            proposalId = proposalId,
+            topic = topic,
+        )
+
+        // Emit a StageHistory row whenever the raw status changes between consecutive
+        // revisions (matching the KEEP semantics).
+        val stages = folded.zip(metas)
+            .foldIndexed(mutableListOf<StageHistory>()) { idx, acc, (fc, meta) ->
+                if (meta.rawStatus != null && (acc.isEmpty() || acc.last().rawStatus != meta.rawStatus)) {
+                    acc += StageHistory(
+                        projectId = projectId,
+                        proposalId = proposalId,
+                        stageIndex = idx,
+                        normalizedStatus = meta.normalizedStatus,
+                        rawStatus = meta.rawStatus,
+                        createdAt = fc.committedAt,
+                    )
+                }
+                acc
+            }
+
+        val replaces = metas.flatMap { it.replaces }.distinct()
+        val supersededBy = metas.flatMap { it.supersededBy }.distinct()
+        val seeAlso = metas.flatMap { it.seeAlso }.distinct()
+        val related = buildList {
+            for (other in replaces) if (other != proposalId) {
+                // This proposal replaces `other` → we are the superseder.
+                add(
+                    RelatedProposal(
+                        projectId = projectId,
+                        proposalId = proposalId,
+                        relatedProjectId = projectId,
+                        relatedProposalId = other,
+                        type = "supersedes",
+                    )
+                )
+            }
+            for (other in supersededBy) if (other != proposalId) {
+                // `other` supersedes this one.
+                add(
+                    RelatedProposal(
+                        projectId = projectId,
+                        proposalId = other,
+                        relatedProjectId = projectId,
+                        relatedProposalId = proposalId,
+                        type = "supersedes",
+                    )
+                )
+            }
+            for (other in seeAlso) if (other != proposalId) {
+                // see-also is symmetric in spirit, but the schema only stores a directed edge —
+                // we emit one in the (this -> other) direction.
+                add(
+                    RelatedProposal(
+                        projectId = projectId,
+                        proposalId = proposalId,
+                        relatedProjectId = projectId,
+                        relatedProposalId = other,
+                        type = "related",
+                    )
+                )
+            }
+        }
+
+        return ProposalGroup(
+            proposal = proposal,
+            revisions = revisions,
+            authorRevisions = authorRevisions,
+            stages = stages,
+            relatedProposals = related,
+        )
+    }
+
+    private fun parseYamlMeta(yamlJson: JsonObject, dir: String, commitSha: String): KepYamlMeta {
+        val content = yamlJson.getJsonString("content_text")
+        // Some KEP yamls have unquoted `@login` scalars (e.g. `- @liggitt`), which kaml rejects
+        // because `@` is a reserved YAML indicator. Quote those before parsing.
+        val sanitised = content.replace(UNQUOTED_AT_REGEX, "$1\"@$2\"")
+        val parsed: YamlNode? = runCatching { Yaml.default.parseToYamlNode(sanitised) }
+            .onFailure { log.warn("yaml parse failed for {}@{}: {}", dir, commitSha.take(8), it.message) }
+            .getOrNull()
+        val map = (parsed as? YamlMap) ?: return EMPTY_META
+
+        val title = map.scalarOrNull("title")
+        val kepNumber = map.scalarOrNull("kep-number")
+        if (kepNumber == "NNNN") return EMPTY_META // copied yaml template
+        val owningSig = map.scalarOrNull("owning-sig")
+        val rawStatus = map.scalarOrNull("status")
+        val statusToken = rawStatus?.substringBefore("#")?.trim()?.takeIf { it.isNotBlank() }
+        val authors = map.scalarListOrEmpty("authors")
+            .map { it.removePrefix("@").trim() }
+            .filter { it.isNotBlank() && it != "TBD" && it != "N/A" && it != "NA" }
+            .filter { it != "jane.doe" } // template placeholder author
+
+        val milestone = runCatching { map.get<YamlMap>("milestone") }.getOrNull()
+        val stableMilestone = milestone?.scalarOrNull("stable")
+        val latestMilestone = map.scalarOrNull("latest-milestone")
+        val isImplemented = statusToken?.lowercase()?.startsWith("implemented") == true
+        val implementedAtVersion = if (isImplemented) {
+            (stableMilestone ?: latestMilestone)?.takeIf { it != "TBD" && it != "N/A" }
+        } else null
+
+        val replaces = map.scalarListOrEmpty("replaces").mapNotNull { canonicaliseKepRef(it) }
+        val supersededBy = map.scalarListOrEmpty("superseded-by").mapNotNull { canonicaliseKepRef(it) }
+        val seeAlso = map.scalarListOrEmpty("see-also").mapNotNull { canonicaliseKepRef(it) }
+
+        return KepYamlMeta(
+            title = title,
+            kepNumber = kepNumber,
+            authors = authors,
+            owningSig = owningSig,
+            rawStatus = rawStatus,
+            normalizedStatus = normalizeStatus(statusToken),
+            implementedAtVersion = implementedAtVersion,
+            replaces = replaces,
+            supersededBy = supersededBy,
+            seeAlso = seeAlso,
+        )
+    }
+
+    /**
+     * Maps a parsed KEP status token onto one of the `StageHistory.normalized_status`
+     * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `unknown`.
+     *
+     * KEP's canonical states are `provisional`, `implementable`, `implemented`, `deferred`,
+     * `rejected`, `withdrawn`, `replaced` — we additionally see typos (`imlpemented`,
+     * `implementeable`), the literal template string `provisional|implementable|…`, and a
+     * few one-offs (`alpha`, `removed`, `superseded`).
+     */
+    private fun normalizeStatus(token: String?): String {
+        if (token.isNullOrBlank()) return "unknown"
+        val k = token.lowercase()
+            .trim()
+            .trim('.', ',', ';', ':', '*', '`', ' ', '"', '\'')
+            .trim()
+        return when {
+            k.isBlank() || k == "unknown" || k == "tbd" || k == "n/a" || k == "nnnn" -> "unknown"
+            // Literal template placeholder `provisional|implementable|…` — treat as unset.
+            k.startsWith("provisional|") -> "unknown"
+
+            // Accepted: shipped/stable.
+            k.startsWith("implemented") || k.startsWith("imlpemented") -> "accepted"
+
+            // Rejected / superseded.
+            k.startsWith("rejected") -> "rejected"
+            k.startsWith("replaced") -> "rejected"
+            k.startsWith("superseded") -> "rejected"
+
+            // Withdrawn / deferred / removed.
+            k.startsWith("withdrawn") -> "withdrawn"
+            k.startsWith("deferred") -> "withdrawn"
+            k.startsWith("removed") -> "withdrawn"
+
+            // Review: implementable + in-flight alpha/beta.
+            k.startsWith("implementable") || k.startsWith("implementeable") || k.startsWith("implementables") -> "review"
+            k == "alpha" || k == "beta" -> "review"
+
+            // Draft: provisional / proposed.
+            k.startsWith("provisional") -> "draft"
+            k.startsWith("proposed") -> "draft"
+            k == "draft" || k.startsWith("draft ") -> "draft"
+
+            else -> {
+                log.warn("MISSING_STATUS_MAPPING: '{}' (raw token); mapping to 'unknown'.", token)
+                "unknown"
+            }
+        }
+    }
+
+    private fun resolveGHLogin(login: String): Long =
+        personByGHLogin.getOrPut(login) { personIds.nextId() }
+
+    /**
+     * Pulls a bare proposal_id (e.g. `"2451"`) out of a `replaces` / `superseded-by` /
+     * `see-also` reference. KEP yaml authors use these fields very loosely — values range
+     * from clean repo-relative paths to external URLs to literal `"TBD"`.
+     *
+     * Resolution order:
+     * 1. Modern path `/keps/<sig>/NNNN-<slug>` → `"NNNN"`.
+     * 2. Old-format path `/keps/<sig>/<date>-<slug>.md` or `/keps/<sig>/<slug>.md` → look up
+     *    the slug in [proposalIdBySlug] (built from the modern dir set).
+     * 3. Otherwise null.
+     */
+    private fun canonicaliseKepRef(ref: String): String? {
+        val trimmed = ref.trim().trim('(', ')', ',', ' ', '"', '\'').trim()
+        if (trimmed.isEmpty()) return null
+        val keepOnly = trimmed.substringBefore('#').substringBefore(' ').trim()
+        val pathMatch = KEPS_PATH_REGEX.find(keepOnly) ?: return null
+        val segment = pathMatch.groupValues[1]
+            .removeSuffix("/")
+            .removeSuffix(".md")
+            .removeSuffix("/README")
+        // Try modern form first.
+        val leadingNumber = LEADING_KEP_NUMBER_REGEX.find(segment)?.groupValues?.get(1)
+        if (leadingNumber != null && leadingNumber.length <= 5) return leadingNumber
+        // Old-format fallback: slug-match against our known proposals.
+        val slug = extractSlug(segment)
+        return proposalIdBySlug[slug]
+    }
+
+    private fun String.proposalIdFromDir(): String? {
+        val last = substringAfterLast('/', "")
+        val match = LEADING_KEP_NUMBER_REGEX.find(last) ?: return null
+        return match.groupValues[1]
+    }
+
+    private data class RawCommit(
+        val commitSha: String,
+        val committedAt: String,
+        val yaml: JsonObject?,
+        val readme: JsonObject?,
+        val oldFormat: JsonObject?,
+    )
+
+    private data class FoldedCommit(
+        val commitSha: String,
+        val committedAt: String,
+        val yaml: JsonObject?,
+        val body: String,
+    )
+
+    private data class KepYamlMeta(
+        val title: String?,
+        val kepNumber: String?,
+        val authors: List<String>,
+        val owningSig: String?,
+        val rawStatus: String?,
+        val normalizedStatus: String,
+        val implementedAtVersion: String?,
+        val replaces: List<String>,
+        val supersededBy: List<String>,
+        val seeAlso: List<String>,
+    )
+
+    private data class ProposalGroup(
+        val proposal: Proposal,
+        val revisions: List<ProposalRevision>,
+        val authorRevisions: List<ProposalRevisionAuthor>,
+        val stages: List<StageHistory>,
+        val relatedProposals: List<RelatedProposal>,
+    )
+
+    private data class Quadruple<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+    companion object {
+        /** Matches an in-repo KEP directory reference inside a free-text yaml value. */
+        private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/([^\s)]+(?:/README\.md)?)""")
+
+        /** Matches a leading numeric prefix (`NNNN` or `NNNN-`) on a path segment. */
+        private val LEADING_KEP_NUMBER_REGEX = Regex("""^(\d{1,5})(?:-|$)""")
+
+        /** Matches an unquoted `@login` scalar after a YAML list dash. */
+        private val UNQUOTED_AT_REGEX = Regex("""(?m)^(\s*-\s+)@([\w.-]+)\s*$""")
+
+        private val EMPTY_META = KepYamlMeta(
+            title = null,
+            kepNumber = null,
+            authors = emptyList(),
+            owningSig = null,
+            rawStatus = null,
+            normalizedStatus = "unknown",
+            implementedAtVersion = null,
+            replaces = emptyList(),
+            supersededBy = emptyList(),
+            seeAlso = emptyList(),
+        )
+    }
+}
+
+/**
+ * Strips a leading `NNNN-` (KEP number) or `YYYYMMDD-` (date) prefix from a path segment,
+ * leaving the descriptive slug. Returns the input unchanged when no such prefix is present
+ * (e.g., the legacy `k8s-image-promoter` form).
+ */
+private fun extractSlug(name: String): String {
+    val m = Regex("""^\d+-(.+)$""").matchEntire(name) ?: return name
+    return m.groupValues[1]
+}
+
+/** Reads a scalar value at [key] or null when missing / non-scalar / blank. */
+private fun YamlMap.scalarOrNull(key: String): String? =
+    (get<YamlNode>(key) as? YamlScalar)?.content?.takeIf { it.isNotBlank() }
+
+/**
+ * Reads [key] as a `YamlList` of scalars and returns their string contents. Returns an empty
+ * list when the key is missing, the value is `null`, or the value isn't a list of scalars.
+ */
+private fun YamlMap.scalarListOrEmpty(key: String): List<String> {
+    val list = get<YamlNode>(key) as? YamlList ?: return emptyList()
+    return list.items.mapNotNull { (it as? YamlScalar)?.content?.takeIf { s -> s.isNotBlank() } }
 }

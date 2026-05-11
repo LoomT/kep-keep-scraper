@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation(projects.scraper)
+    implementation(libs.kaml)
     testImplementation(kotlin("test"))
 }
 
