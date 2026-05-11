@@ -8,9 +8,11 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.revwalk.RevSort
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.slf4j.LoggerFactory
@@ -85,6 +87,8 @@ class RevisionWalker(
     private fun listPathsAtHead(repo: Repository, headId: ObjectId): List<String> {
         val paths = mutableListOf<String>()
         RevWalk(repo).use { rw ->
+            rw.sort(RevSort.COMMIT_TIME_DESC, true)
+            rw.sort(RevSort.REVERSE, true)
             val commit = rw.parseCommit(headId)
             TreeWalk(repo).use { tw ->
                 tw.addTree(commit.tree)
@@ -105,7 +109,7 @@ class RevisionWalker(
         sinceId: ObjectId?,
     ): List<JsonObject> {
         val rows = mutableListOf<JsonObject>()
-        org.eclipse.jgit.api.Git(repo).use { git ->
+        Git(repo).use { git ->
             val cmd = git.log().add(headId).addPath(path)
             if (sinceId != null) cmd.not(sinceId)
             val commits = runCatching { cmd.call().toList() }.getOrElse {
