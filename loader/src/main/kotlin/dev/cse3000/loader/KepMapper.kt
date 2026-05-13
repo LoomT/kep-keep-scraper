@@ -37,6 +37,7 @@ class KepMapper(
     private val commentIds: IdAllocator,
 ) {
     private val personByGHLogin = mutableMapOf<String, Long>()
+    private val personByEmail = mutableMapOf<String, Long>()
 
     /**
      * Slug → bare proposal_id, populated during [mapProposals]. Used to resolve see-also /
@@ -83,11 +84,49 @@ class KepMapper(
         )
         val comments = issueComments + prComments
 
-        // Built after mapIssueComments/mapPrComments so any login first seen in a comment
-        // gets a person row + username emitted here.
-        val persons = personByGHLogin.entries.map { (_, id) -> Person(personId = id, fullName = null) }
-        val personUsernames = personByGHLogin.entries.map { (login, id) ->
-            PersonUsername(personId = id, domain = "github.com", username = login, realName = null)
+        CommonMapper.populateUserEmails(
+            normalizedDir = normalizedDir,
+            usersStream = "kep-users",
+            personByGHLogin = personByGHLogin,
+            personByEmail = personByEmail,
+        )
+        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateCommitterAuthorEmails(
+            normalizedDir = normalizedDir,
+            commitStreams = listOf("kep-commits", "kep-pr-commits"),
+            personByGHLogin = personByGHLogin,
+            personByEmail = personByEmail,
+            resolveGHLogin = ::resolveGHLogin,
+        )
+        val ghLoginsToNames = CommonMapper.ghLoginsToNames(
+            normalizedDir = normalizedDir,
+            usersStream = "kep-users",
+            personByGHLogin = personByGHLogin,
+        )
+
+        val persons = mutableListOf<Person>()
+        val personUsernames = mutableListOf<PersonUsername>()
+        val emittedPersonIds = mutableSetOf<Long>()
+        fun emitPerson(id: Long, fullName: String?) {
+            if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
+        }
+
+        for ((login, id) in personByGHLogin) {
+            emitPerson(id, null)
+            personUsernames += PersonUsername(
+                personId = id,
+                domain = "github.com",
+                username = login,
+                realName = ghLoginsToNames[login] ?: gitFullNameByLogin[login],
+            )
+        }
+        for ((email, id) in personByEmail) {
+            emitPerson(id, null)
+            personUsernames += PersonUsername(
+                personId = id,
+                domain = "email",
+                username = email,
+                realName = gitNameByEmail[email],
+            )
         }
 
         val rows = Rows(
@@ -110,11 +149,10 @@ class KepMapper(
         )
 
         log.info(
-            "KEP resolver counts: proposals={}, revisions={}, persons={}, related={}, dangling-related-dropped={}, " +
-                    "comments={}",
-            rows.proposals.size, rows.proposalRevisions.size, rows.persons.size,
-            rows.relatedProposals.size, danglingRelatedCount,
-            rows.comments.size,
+            "KEP resolver counts: proposals={}, revisions={}, related={}, dangling-related-dropped={}, " +
+                    "persons={} (GH logins={}, emails={}), comments={}",
+            rows.proposals.size, rows.proposalRevisions.size, rows.relatedProposals.size, danglingRelatedCount,
+            rows.persons.size, personByGHLogin.size, personByEmail.size, rows.comments.size,
         )
         log.info(
             "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
