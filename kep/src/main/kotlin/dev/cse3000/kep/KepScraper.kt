@@ -39,7 +39,7 @@ class KepScraper(private val ctx: ScrapeContext) {
                 launch { genericScraper.run(incremental, limit, genericPhases) }
             }
             if (ScrapePhase.PROPOSALS in applicable) {
-                launch { KepRevisionCollector(ctx).run() }
+                launch { KepRevisionCollector(ctx).run(incremental) }
             }
             if (ScrapePhase.COMMITS in applicable) {
                 launch { KepCommitsCollector(ctx).run(limit) }

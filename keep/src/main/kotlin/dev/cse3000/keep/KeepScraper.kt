@@ -34,7 +34,7 @@ class KeepScraper(private val ctx: ScrapeContext) {
                 launch { genericScraper.run(incremental, limit, genericPhases) }
             }
             if (ScrapePhase.PROPOSALS in phases) {
-                launch { KeepRevisionCollector(ctx).run() }
+                launch { KeepRevisionCollector(ctx).run(incremental) }
             }
             if (ScrapePhase.COMMITS in phases) {
                 launch { KeepCommitsCollector(ctx).run(limit) }

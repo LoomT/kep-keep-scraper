@@ -8,10 +8,10 @@ import org.slf4j.LoggerFactory
 class KeepRevisionCollector(private val ctx: ScrapeContext) {
     private val log = LoggerFactory.getLogger(KeepRevisionCollector::class.java)
 
-    suspend fun run() {
+    suspend fun run(incremental: Boolean) {
         RepoMirror(KeepScraper.OWNER, KeepScraper.REPO, ctx.reposDir).use { mirror ->
             mirror.ensureUpToDate()
-            val sinceSha = ctx.gitCursor.get(mirror.slug)
+            val sinceSha = if (incremental) ctx.gitCursor.get(mirror.slug) else null
             log.info("KEEP revision walk starting (since={})", sinceSha?.take(8))
             val walker = RevisionWalker(mirror) { path ->
                 path.startsWith("proposals/") && path.endsWith(".md")
