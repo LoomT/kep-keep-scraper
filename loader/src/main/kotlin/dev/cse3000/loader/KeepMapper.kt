@@ -50,14 +50,7 @@ class KeepMapper(
         val comments = mapComments(proposalIntIds, discussionToProposalsMap, prToProposalMap)
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
-        val (validRelated, danglingRelated) = rawRelated.partition { it.proposalId in proposalIds }
-        for (r in danglingRelated.distinctBy { it.proposalId to it.relatedProposalId }) {
-            log.error(
-                "Dropping RelatedProposal({}, supersedes, {}): superseder '{}' not in our proposal set",
-                r.proposalId, r.relatedProposalId, r.proposalId,
-            )
-        }
-        val relatedProposals = validRelated.distinct()
+        val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
         populateUserEmails()
         val (gitNameByEmail, gitFullNameByLogin) = populateCommitterAuthorEmails()
@@ -209,14 +202,19 @@ class KeepMapper(
             comments = comments.map { it.copy(authorId = sub(it.authorId)) },
         )
 
-        log.info("Meta keys seen: {}", proposalTextMetaKeysSeen)
+        log.info("KEEP meta keys seen: {}", proposalTextMetaKeysSeen)
         log.info(
-            "Resolver counts: GH logins={}, emails={}, names={}, total Person rows={}, Organisations={}, Affiliations={}",
-            personByGHLogin.size, personByEmail.size, personByName.size, persons.size,
+            "KEEP resolver counts: proposals={}, revisions={}, " +
+                    "related={}, dangling-related-dropped={}, " +
+                    "persons={} (GH logins={}, emails={}, names={}), " +
+                    "Organisations={}, Affiliations={}",
+            rows.proposals.size, rows.proposalRevisions.size,
+            rows.relatedProposals.size, danglingRelatedCount,
+            rows.persons.size, personByGHLogin.size, personByEmail.size, personByName.size,
             organisations.size, affiliations.size,
         )
         log.info(
-            "Proposal status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
+            "KEEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
             rows.stageHistory.map { it.rawStatus to it.normalizedStatus }.distinct(),
         )
 

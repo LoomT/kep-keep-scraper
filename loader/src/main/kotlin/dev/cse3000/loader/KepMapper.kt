@@ -19,8 +19,8 @@ private val log = LoggerFactory.getLogger(KepMapper::class.java)
  *
  * Early KEPs used a flat `keps/<sig>/<date>-<slug>.md` format. When such a file
  * was later migrated to the modern split layout, we associate its history with
- * the new dir by matching `<sig>` + the slug fragment, and treat each pre-
- * migration commit as a body-only revision with no yaml meta.
+ * the new dir by matching `<sig>` + the slug fragment. For these early KEP `.md`
+ * files, the yaml content was embedded in the `.md` file itself.
  *
  * `proposal_id` is the bare KEP number (e.g. `"2313"`). A handful of dirs
  * collide on this prefix (three `0000-*` and two `2133-*`); the first dir wins
@@ -48,24 +48,7 @@ class KepMapper(
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
-        val (validRelated, danglingRelated) = rawRelated.partition {
-            it.proposalId in proposalIds && it.relatedProposalId in proposalIds
-        }
-        for (r in danglingRelated.distinctBy { Triple(it.proposalId, it.type, it.relatedProposalId) }) {
-            log.warn(
-                "Dropping RelatedProposal({}, {}, {}): one side not in our proposal set",
-                r.proposalId, r.type, r.relatedProposalId,
-            )
-        }
-        // The schema PK on RelatedProposal is (proposal_id, related_proposal_id) — type is not
-        // part of the key. When the same edge appears with both `supersedes` and `related`
-        // (a KEP that lists another in *both* `replaces` and `see-also`), keep the stronger
-        // edge: supersedes wins over related.
-        val relatedProposals = validRelated
-            .groupBy { Quadruple(it.projectId, it.proposalId, it.relatedProjectId, it.relatedProposalId) }
-            .map { (_, group) ->
-                group.firstOrNull { it.type == "supersedes" } ?: group.first()
-            }
+        val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
         val persons = personByGHLogin.entries.map { (_, id) -> Person(personId = id, fullName = null) }
         val personUsernames = personByGHLogin.entries.map { (login, id) ->
@@ -93,7 +76,7 @@ class KepMapper(
         log.info(
             "KEP resolver counts: proposals={}, revisions={}, persons={}, related={}, dangling-related-dropped={}",
             rows.proposals.size, rows.proposalRevisions.size, rows.persons.size,
-            rows.relatedProposals.size, danglingRelated.size,
+            rows.relatedProposals.size, danglingRelatedCount,
         )
         log.info(
             "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
@@ -529,8 +512,6 @@ class KepMapper(
         val stages: List<StageHistory>,
         val relatedProposals: List<RelatedProposal>,
     )
-
-    private data class Quadruple<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
     companion object {
         /** Matches an in-repo KEP directory reference inside a free-text yaml value. */

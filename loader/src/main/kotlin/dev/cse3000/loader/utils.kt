@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
+internal data class Quadruple<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
 internal inline fun <T, K> List<T>.distinctUntilChangedBy(selector: (T) -> K): List<T> =
     fold(mutableListOf()) { acc, item ->
         if (acc.isEmpty() || selector(acc.last()) != selector(item)) acc.add(item)
