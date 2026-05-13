@@ -2,6 +2,9 @@ package dev.cse3000.loader
 
 import com.charleskorn.kaml.*
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 
@@ -31,7 +34,7 @@ class KepMapper(
     private val normalizedDir: Path,
     private val personIds: IdAllocator,
     @Suppress("unused") private val organisationIds: IdAllocator,
-    @Suppress("unused") private val commentIds: IdAllocator,
+    private val commentIds: IdAllocator,
 ) {
     private val personByGHLogin = mutableMapOf<String, Long>()
 
@@ -50,6 +53,38 @@ class KepMapper(
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
         val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
+        // KEP proposal_ids are bare numbers (e.g. "9", "2451"). The corresponding GitHub
+        // tracking issue, when present, has the same number. Ids that don't parse as
+        // integers are skipped (none expected today, but cheap insurance).
+        val proposalIdByInt: Map<Int, String> = proposals
+            .mapNotNull { p -> p.proposalId.toIntOrNull()?.let { it to p.proposalId } }
+            .toMap()
+
+        val prToProposalMap = buildPrToProposalMap(proposalIdByInt)
+
+        val issueComments = CommonMapper.mapIssueComments(
+            normalizedDir = normalizedDir,
+            issuesStream = "kep-issues",
+            issueCommentsStream = "kep-issue-comments",
+            projectId = projectId,
+            commentIds = commentIds,
+            issueNumberToProposalId = { n -> proposalIdByInt[n] },
+            resolveGHLogin = ::resolveGHLogin,
+        )
+        val prComments = CommonMapper.mapPrComments(
+            normalizedDir = normalizedDir,
+            pullsStream = "kep-pulls",
+            prIssueCommentsStream = "kep-pr-issuecomments",
+            prReviewCommentsStream = "kep-pr-review-comments",
+            projectId = projectId,
+            commentIds = commentIds,
+            prToProposalMap = prToProposalMap,
+            resolveGHLogin = ::resolveGHLogin,
+        )
+        val comments = issueComments + prComments
+
+        // Built after mapIssueComments/mapPrComments so any login first seen in a comment
+        // gets a person row + username emitted here.
         val persons = personByGHLogin.entries.map { (_, id) -> Person(personId = id, fullName = null) }
         val personUsernames = personByGHLogin.entries.map { (login, id) ->
             PersonUsername(personId = id, domain = "github.com", username = login, realName = null)
@@ -71,12 +106,15 @@ class KepMapper(
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
             stageHistory = proposalGroups.flatMap { it.stages },
             relatedProposals = relatedProposals,
+            comments = comments,
         )
 
         log.info(
-            "KEP resolver counts: proposals={}, revisions={}, persons={}, related={}, dangling-related-dropped={}",
+            "KEP resolver counts: proposals={}, revisions={}, persons={}, related={}, dangling-related-dropped={}, " +
+                    "comments={}",
             rows.proposals.size, rows.proposalRevisions.size, rows.persons.size,
             rows.relatedProposals.size, danglingRelatedCount,
+            rows.comments.size,
         )
         log.info(
             "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
@@ -441,6 +479,43 @@ class KepMapper(
         personByGHLogin.getOrPut(login) { personIds.nextId() }
 
     /**
+     * Scans `kep-pulls.jsonl` and links each PR to a proposal when the PR title references
+     * a known KEP number (e.g. "KEP-1234", "kep 2345", "KEP1234"). Only the first match per
+     * title is used; PRs whose referenced KEP isn't in our proposal set are skipped.
+     *
+     * The duplicate prevention is "first match per PR number wins" — `kep-pulls.jsonl` is
+     * pre-deduped to one row per PR via [keepLatestScrapesBy], so collisions are between
+     * different PRs pointing at the same proposal, which is fine: many-PRs → one-proposal
+     * is the expected fan-in.
+     */
+    private fun buildPrToProposalMap(proposalIdByInt: Map<Int, String>): Map<Int, String> {
+        var titled = 0
+        val map = mutableMapOf<Int, MutableSet<String>>()
+        readJsonlObjects(normalizedDir, "kep-pulls")
+            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
+            .forEach { pull ->
+                val title = pull.getJsonStringOrNull("title") ?: return@forEach
+                val matches = KEP_IN_TITLE_REGEX.findAll(title)
+                if (matches.none()) return@forEach
+                titled++
+                val kepNumbers = matches.map { it.groupValues[1].toIntOrNull() }
+                val proposalIds = kepNumbers.mapNotNull { proposalIdByInt[it] }
+                if (proposalIds.none()) return@forEach
+                val prNumber = pull["number"]!!.jsonPrimitive.int
+                map.getOrPut(prNumber) { mutableSetOf() }.addAll(proposalIds)
+            }
+
+        val (validMap, invalidMap) = map.entries.partition { it.value.size == 1 }
+
+        log.info(
+            "KEP PR→proposal title match: {} PRs mentioned a KEP number; " +
+                    "{} resolved to a known single proposal; {} resolved to multiple proposals (ignoring).",
+            titled, validMap.size, invalidMap.size,
+        )
+        return validMap.associate { it.key to it.value.single() }
+    }
+
+    /**
      * Pulls a bare proposal_id (e.g. `"2451"`) out of a `replaces` / `superseded-by` /
      * `see-also` reference. KEP yaml authors use these fields very loosely — values range
      * from clean repo-relative paths to external URLs to literal `"TBD"`.
@@ -514,6 +589,12 @@ class KepMapper(
     )
 
     companion object {
+        /**
+         * Matches a `KEP-NNNN` / `kep NNNN` / `KEP1234` reference inside free-form text
+         * (case-insensitive). Used to attribute a PR to a proposal via its title.
+         */
+        private val KEP_IN_TITLE_REGEX = Regex("""(?i)\bkep[\s-]?(\d{1,5})\b""")
+
         /** Matches an in-repo KEP directory reference inside a free-text yaml value. */
         private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/([^\s)]+(?:/README\.md)?)""")
 

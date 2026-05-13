@@ -43,3 +43,13 @@ internal fun JsonObject.getJsonStringOrNull(key: String): String? {
     if (!prim.isString) return null
     return prim.content
 }
+
+/**
+ * Reads `user.login` for a GitHub user-shaped object (`{ "login": ..., "id": ..., ... }`),
+ * returning "ghost" when the user is `null` or the login is missing — matching GitHub's
+ * own convention for deleted accounts (https://github.com/ghost).
+ */
+internal fun JsonObject.getLoginOrGhost(): String {
+    val obj = this["user"] as? JsonObject ?: return "ghost"
+    return obj.getJsonStringOrNull("login") ?: "ghost"
+}
