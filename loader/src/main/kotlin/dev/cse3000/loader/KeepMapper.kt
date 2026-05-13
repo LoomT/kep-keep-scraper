@@ -1,6 +1,5 @@
 package dev.cse3000.loader
 
-import dev.cse3000.loader.KeepMapper.Companion.BUSINESS_EMAIL_DOMAINS
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -792,17 +791,16 @@ class KeepMapper(
      * 2. **`user.company` free-text field** — from `keep-users.jsonl`. Stripped of leading
      *    `@` (people often write `@JetBrains`) and deduped against (1) by
      *    case-insensitive canonical name.
-     * 3. **`user.email` business domain (whitelist)** — only when the email's domain is in
-     *    [BUSINESS_EMAIL_DOMAINS]. We deliberately favour false negatives here: it's much
-     *    safer to miss a real corporate domain than to mint a fake "company" from a
-     *    personal vanity domain (`flowerguy.io`, `mike.dev`). Every domain encountered is
-     *    logged with its hit count so the whitelist can be grown from observation.
      *
      * Orgs are deduped by canonical name (lowercased, trimmed, leading `@` stripped) so
-     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains`, and the email domain
-     * `jetbrains.com` all end up as separate rows ONLY if they differ after that
+     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains`
+     * all end up as separate rows ONLY if they differ after that
      * normalisation. (They often will — string matching is intentionally conservative;
      * downstream RQ3 dedup can run a fuzzier merge if desired.)
+     *
+     * Mapping business email domains to organisations is also possible
+     * but is intentionally left to downstream RQs since the emails are
+     * available there anyway.
      *
      * Affiliations are deduped on the composite PK `(organisation_id, person_id)`.
      *
@@ -860,19 +858,7 @@ class KeepMapper(
             }
         }
 
-        // Source 2 + 3: company free-text and (whitelisted-only) email domains.
-        val emailDomainCounts = mutableMapOf<String, Int>()
-
-        fun processEmail(email: String, personId: Long) {
-            val domain = email.substringAfter('@', missingDelimiterValue = "").trim().lowercase()
-            if (domain.isNotEmpty()) {
-                emailDomainCounts.merge(domain, 1) { a, b -> a + b }
-                if (domain in BUSINESS_EMAIL_DOMAINS) {
-                    addAffiliation(ensureOrg(domain), personId)
-                }
-            }
-        }
-
+        // Source 2: company free-text.
         for (user in users) {
             val login = user.getJsonString("login")
             val personId = resolveGHLogin(login)
@@ -880,30 +866,7 @@ class KeepMapper(
             user.getJsonStringOrNull("company")?.takeIf { it.isNotBlank() }?.let { company ->
                 addAffiliation(ensureOrg(company), personId)
             }
-
-            user.getJsonStringOrNull("email")?.takeIf { it.isNotBlank() }?.let { email ->
-                processEmail(email, personId)
-            }
         }
-
-        for ((email, personId) in personByEmail) {
-            processEmail(email, personId)
-        }
-
-        if (emailDomainCounts.isNotEmpty()) {
-            val sorted = emailDomainCounts.entries
-                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            val report = sorted.joinToString("\n") { (d, n) ->
-                val mark = if (d in BUSINESS_EMAIL_DOMAINS) "[whitelisted]" else "[skipped]    "
-                val s = if (n == 1) "" else "s"
-                "  $mark $d  ($n user$s)"
-            }
-            log.info(
-                "Email domains seen across {} user record(s); extend BUSINESS_EMAIL_DOMAINS in KeepMapper to include more:\n{}",
-                users.size, report,
-            )
-        }
-
         return organisations to affiliations
     }
 
@@ -1181,32 +1144,5 @@ class KeepMapper(
         /** Streams scanned by [populateCommitterAuthorEmails] for git author/committer info. */
         private val COMMIT_STREAMS = listOf("keep-commits", "keep-pr-commits")
         private val COMMIT_ROLES = listOf("author", "committer")
-
-        /**
-         * Whitelist of email domains we trust to indicate a real company affiliation.
-         * Anything outside this list is treated as personal/unknown and dropped — we
-         * favour false negatives (missing a corporate affiliation) over false positives
-         * (minting a fake "company" from `someone-vanity.dev`).
-         *
-         * To grow this list: run the loader, look at the `Email domains seen across …
-         * user record(s)` log line — every domain in the corpus is shown there with a
-         * hit count and a `[whitelisted]` / `[skipped]` marker. Add the obvious
-         * corporate ones to this set and re-run.
-         */
-        private val BUSINESS_EMAIL_DOMAINS = setOf(
-            "jetbrains.com",
-            "google.com",
-            "apple.com",
-            "microsoft.com",
-            "amazon.com",
-            "meta.com",
-            "redhat.com",
-            "oracle.com",
-            "ibm.com",
-            "nvidia.com",
-            "intel.com",
-            "gradle.com",
-            "gradle.org",
-        )
     }
 }
