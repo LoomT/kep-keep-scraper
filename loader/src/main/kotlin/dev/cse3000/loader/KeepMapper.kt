@@ -148,7 +148,14 @@ class KeepMapper(
             updatedPersonIdMap.size, resolutionConflicts,
         )
 
-        val (organisations, affiliations) = mapOrgsAndAffiliations()
+        val (organisations, affiliations) = CommonMapper.mapOrgsAndAffiliations(
+            normalizedDir = normalizedDir,
+            orgsStream = "keep-orgs",
+            usersStream = "keep-users",
+            userOrgsStream = "keep-user-orgs",
+            personByGHLogin = personByGHLogin,
+            organisationIds = organisationIds,
+        )
 
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
@@ -665,93 +672,6 @@ class KeepMapper(
             }
         }
         return rawStatus to null
-    }
-
-    /**
-     * Builds the [Organisation] and [Affiliation] rows from three sources:
-     *
-     * 1. **GitHub org membership** — `keep-user-orgs.jsonl` (one row per user with their
-     *    org list) joined against `keep-orgs.jsonl` (full per-org details).
-     * 2. **`user.company` free-text field** — from `keep-users.jsonl`. Stripped of leading
-     *    `@` (people often write `@JetBrains`) and deduped against (1) by
-     *    case-insensitive canonical name.
-     *
-     * Orgs are deduped by canonical name (lowercased, trimmed, leading `@` stripped) so
-     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains`
-     * all end up as separate rows ONLY if they differ after that
-     * normalisation. (They often will — string matching is intentionally conservative;
-     * downstream RQ3 dedup can run a fuzzier merge if desired.)
-     *
-     * Mapping business email domains to organisations is also possible
-     * but is intentionally left to downstream RQs since the emails are
-     * available there anyway.
-     *
-     * Affiliations are deduped on the composite PK `(organisation_id, person_id)`.
-     *
-     * Should run after [personByGHLogin] is fully populated.
-     */
-    private fun mapOrgsAndAffiliations(): Pair<List<Organisation>, List<Affiliation>> {
-        val orgsByLogin: Map<String, JsonObject> = readJsonlObjects(normalizedDir, "keep-orgs")
-            .keepLatestScrapesBy { it.getJsonString("login") }
-            .associateBy { it.getJsonString("login") }
-
-        val users = readJsonlObjects(normalizedDir, "keep-users")
-            .keepLatestScrapesBy { it.getJsonString("login") }
-            .filter { it.getJsonString("login") in personByGHLogin.keys }
-            .toList()
-
-        val userOrgs = readJsonlObjects(normalizedDir, "keep-user-orgs")
-            .keepLatestScrapesBy { it.getJsonString("_login") }
-            .filter { it.getJsonString("_login") in personByGHLogin.keys }
-            .toList()
-
-        val orgIdByCanonName = mutableMapOf<String, Long>()
-        val organisations = mutableListOf<Organisation>()
-
-        fun ensureOrg(rawName: String): Long? {
-            val display = rawName.trim().removePrefix("@").trim()
-            if (display.isEmpty()) return null
-            val canon = display.lowercase()
-            return orgIdByCanonName.getOrPut(canon) {
-                val id = organisationIds.nextId()
-                organisations += Organisation(organisationId = id, organisationName = display)
-                id
-            }
-        }
-
-        val affiliationKeys = mutableSetOf<Pair<Long, Long>>()
-        val affiliations = mutableListOf<Affiliation>()
-        fun addAffiliation(orgId: Long?, personId: Long) {
-            if (orgId == null) return
-            if (affiliationKeys.add(orgId to personId)) {
-                affiliations += Affiliation(organisationId = orgId, personId = personId)
-            }
-        }
-
-        // Source 1: explicit GitHub memberships.
-        for (row in userOrgs) {
-            val login = row.getJsonString("_login")
-            val personId = resolveGHLogin(login)
-            val orgsArray = row["orgs"] as? JsonArray ?: continue
-            for (ref in orgsArray) {
-                val orgLogin = (ref as? JsonObject)?.getJsonStringOrNull("login") ?: continue
-                // Prefer the org's display `name` (from /orgs/{org}); fall back to the login.
-                val orgJson = orgsByLogin[orgLogin]
-                val name = orgJson?.getJsonStringOrNull("name")?.takeIf { it.isNotBlank() } ?: orgLogin
-                addAffiliation(ensureOrg(name), personId)
-            }
-        }
-
-        // Source 2: company free-text.
-        for (user in users) {
-            val login = user.getJsonString("login")
-            val personId = resolveGHLogin(login)
-
-            user.getJsonStringOrNull("company")?.takeIf { it.isNotBlank() }?.let { company ->
-                addAffiliation(ensureOrg(company), personId)
-            }
-        }
-        return organisations to affiliations
     }
 
     private fun mapComments(

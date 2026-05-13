@@ -33,7 +33,7 @@ class KepMapper(
     private val projectId: Int,
     private val normalizedDir: Path,
     private val personIds: IdAllocator,
-    @Suppress("unused") private val organisationIds: IdAllocator,
+    private val organisationIds: IdAllocator,
     private val commentIds: IdAllocator,
 ) {
     private val personByGHLogin = mutableMapOf<String, Long>()
@@ -102,6 +102,14 @@ class KepMapper(
             usersStream = "kep-users",
             personByGHLogin = personByGHLogin,
         )
+        val (organisations, affiliations) = CommonMapper.mapOrgsAndAffiliations(
+            normalizedDir = normalizedDir,
+            orgsStream = "kep-orgs",
+            usersStream = "kep-users",
+            userOrgsStream = "kep-user-orgs",
+            personByGHLogin = personByGHLogin,
+            organisationIds = organisationIds,
+        )
 
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
@@ -140,6 +148,8 @@ class KepMapper(
             ),
             persons = persons,
             personUsernames = personUsernames,
+            organisations = organisations,
+            affiliations = affiliations,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
@@ -150,9 +160,10 @@ class KepMapper(
 
         log.info(
             "KEP resolver counts: proposals={}, revisions={}, related={}, dangling-related-dropped={}, " +
-                    "persons={} (GH logins={}, emails={}), comments={}",
+                    "persons={} (GH logins={}, emails={}), organisations={}, affiliations={}, comments={}",
             rows.proposals.size, rows.proposalRevisions.size, rows.relatedProposals.size, danglingRelatedCount,
-            rows.persons.size, personByGHLogin.size, personByEmail.size, rows.comments.size,
+            rows.persons.size, personByGHLogin.size, personByEmail.size,
+            rows.organisations.size, rows.affiliations.size, rows.comments.size,
         )
         log.info(
             "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
@@ -163,10 +174,10 @@ class KepMapper(
     }
 
     private fun mapProposals(): List<ProposalGroup> {
-        val yamlByKey = readJsonlObjects(normalizedDir, "kep-yaml-revisions")
+        val yamlByKey = readJsonlObjects(normalizedDir, "kep-revisions-yaml")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
             .toList()
-        val readmeByKey = readJsonlObjects(normalizedDir, "kep-readme-revisions")
+        val readmeByKey = readJsonlObjects(normalizedDir, "kep-revisions-readme")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
             .toList()
 
