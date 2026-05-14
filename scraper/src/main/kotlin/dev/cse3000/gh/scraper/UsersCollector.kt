@@ -21,7 +21,7 @@ import java.nio.file.Path
  * 404 (deleted/renamed account) is treated as a soft failure — logged at WARN,
  * skipped, the rest of the batch continues.
  *
- * Designed to be the *last* phase a scraper runs: by then the other phases have
+ * Designed to be the *last* (but before orgs) phase a scraper runs: by then the other phases have
  * written their JSONLs to disk (so login discovery is complete). Callers should
  * call `sink.flushAll()` immediately before invoking this so any buffered writes
  * become visible to the file scan.

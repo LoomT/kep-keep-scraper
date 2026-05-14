@@ -441,7 +441,10 @@ class KepMapper(
         // because `@` is a reserved YAML indicator. Quote those before parsing.
         val sanitised = content.replace(UNQUOTED_AT_REGEX, "$1\"@$2\"")
         val parsed: YamlNode? = runCatching { Yaml.default.parseToYamlNode(sanitised) }
-            .onFailure { log.warn("yaml parse failed for {}: {}", label, it.message) }
+            .onFailure {
+                if (log.isDebugEnabled) log.warn("yaml parse failed for {}: {}", label, it.message)
+                else log.warn("yaml parse failed for {}", label)
+            }
             .getOrNull()
         val map = (parsed as? YamlMap) ?: return EMPTY_META
 

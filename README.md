@@ -2,13 +2,13 @@
 
 ## Modules
 
-| Module     | Purpose                                                                                              |
-|------------|------------------------------------------------------------------------------------------------------|
-| `:scraper` | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                    |
-| `:keep`    | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk.                     |
-| `:kep`     | KEP-specific scraper (`kubernetes/enhancements`). Includes the kep.yaml + README revision walk.      |
-| `:loader`  | Maps the KEEPs and KEPs to the common SQL schema and creates `data.sql` for loading into a database. |
-| `:rq3`     | Analysis module (TBD).                                                                               |
+| Module     | Purpose                                                                                                                                             |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `:scraper` | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                                                                   |
+| `:keep`    | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk and corresponding commits from GH scraping.                         |
+| `:kep`     | KEP-specific scraper (`kubernetes/enhancements`). Includes the proposal kep.yaml + README revision walk and corresponding commits from GH scraping. |
+| `:loader`  | Maps the KEEPs and KEPs to the common SQL schema and creates `data.sql` for loading into a database.                                                |
+| `:rq3`     | Analysis module (TBD).                                                                                                                              |
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ fetches everything in one shot. The Gradle convention plugin sets
 ### Open this project from a monorepo clone
 
 ```sh
-# 1. Clone the monorepo (single shot — subtrees include everyone's files).
+# 1. Clone the monorepo.
 git clone <monorepo-url> proposals-monorepo
 cd cse3000-sep/rq3-keep-kep
 
@@ -56,25 +56,6 @@ idea .   # or open the folder via File ▸ Open in IntelliJ
 ./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
 ./gradlew :rq3:run
 ```
-
-To work on this repo *outside* the monorepo (e.g., to push to its standalone GitLab project), use `git subtree split`
-from the monorepo root:
-
-```sh
-cd <monorepo-root>
-git subtree split --prefix=rq3-keep-kep --branch=keep-kep-export
-git push <this-repo-standalone-url> keep-kep-export:main
-```
-
-To pull upstream changes from the standalone repo back into the monorepo:
-
-```sh
-cd <monorepo-root>
-git subtree pull --prefix=rq3-keep-kep <this-repo-standalone-url> main --squash
-```
-
-Either layout, **open `rq3-keep-kep/` in IntelliJ** (not the monorepo root), so sibling contributors' folders aren't
-pulled into indexing.
 
 Override knobs (any `:run` task):
 
@@ -108,17 +89,17 @@ phase since it's only meaningful for KEEP/KEP layouts.
 ./gradlew :scraper:run --args="--repo=JetBrains/kotlin --mode=update --include=issues,prs --limit=20"
 ```
 
-Arguments:
+### Available arguments
 
-| Flag                  | Default                | Notes                                                                                           |
-|-----------------------|------------------------|-------------------------------------------------------------------------------------------------|
-| `--repo=owner/name`   | (required)             | Target repository.                                                                              |
-| `--mode=full\|update` | `update`               | `full` ignores cursors; `update` resumes from last sync.                                        |
-| `--limit=N`           | unlimited              | Process at most N top-level items per phase. Useful for smoke tests.                            |
-| `--include=p1,p2,...` | all minus proposals    | Phases: `repo-info`, `issues`, `prs`, `discussions`, `commits`. Passing `proposals` errors out. |
-| `--dataDir=PATH`      | `data/<owner>/<name>/` | Where to write cache, normalized JSONL, manifests, and the local git mirror.                    |
+| Flag                  | Default                | Notes                                                                                                                                                            |
+|-----------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--repo=owner/name`   | (required)             | Target repository (only applicable to the generic scraper).                                                                                                      |
+| `--mode=full\|update` | `update`               | `full` ignores cursors; `update` resumes from last sync.                                                                                                         |
+| `--limit=N`           | unlimited              | Process at most N top-level items per phase. Useful for smoke tests.                                                                                             |
+| `--include=p1,p2,...` | all                    | Phases: `repo-info`, `proposals`, `issues`, `prs`, `discussions`, `commits`, `users`, `orgs`. Generic scraper skips proposals and KEP scraper skips discussions. |
+| `--dataDir=PATH`      | `data/<owner>/<name>/` | Where to write cache, normalized JSONL, manifests, and the local git mirror.                                                                                     |
 
-### Phase filtering on the named scrapers
+### Phase filtering on the scrapers
 
 `:keep:run` and `:kep:run` accept the same `--include=...` flag. Phases:
 
@@ -126,7 +107,8 @@ Arguments:
 - `issues` — issues + comments + timeline events.
 - `prs` — PRs + reviews + review-comments + commits-of-the-PR + files + timeline.
 - `discussions` — GitHub Discussions tab (KEEP only — no-op on KEP).
-- `proposals` — full revision history of proposal files (KEEP markdown / KEP yaml + README) via a local bare git mirror.
+- `proposals` — full revision history of proposal files (KEEP markdown / KEP yaml + markdown) via a local bare git
+  mirror. Generic scraper skips this phase.
 - `commits` — repo-wide commit history via the GitHub REST API. **Crucially carries
   `author.login` / `committer.login`** (the GitHub user mapped from the git author
   email) — that's the bit the local-git `proposals` walker can't see.
@@ -137,17 +119,13 @@ Arguments:
     history is fetched. Skip this phase on huge repos unless you need it.
 - `users` — fetches `GET /users/{login}` for every distinct GitHub login that appears anywhere in the other
   `<tag>-*.jsonl` streams already on disk. Runs sequentially **after** every other selected phase, so it sees
-  freshly-emitted data; running it alone (`--include=users`) reuses the JSONLs from your last scrape — no manual
-  `logins.txt` input needed. Output goes to
+  freshly-emitted data; running it alone (`--include=users`) reuses the JSONLs from your last scrapes. Output goes to
   `<tag>-users.jsonl` (e.g. `keep-users.jsonl`, `kep-users.jsonl`). ETag-cached on re-run, 404s skipped.
 - `orgs` — runs **after** `users`. For every login in `<tag>-users.jsonl`, fetches
   `GET /users/{login}/orgs` (the user's `organizations_url`) and emits the orgs array to `<tag>-user-orgs.jsonl` keyed
   by `_login` — that's the user→orgs membership. Then fetches `GET /orgs/{org}` for every distinct org login discovered
   and emits full org details (name, company, blog, location, email, description, etc.) to
-  `<tag>-orgs.jsonl`. Loader-side mapping of users to orgs additionally uses
-  `users[i].company` (free-text affiliation) and `users[i].email` when the domain looks private (i.e. not a public mail
-  provider) — those won't appear as GitHub org memberships but still represent real affiliations. ETag-cached, 404s
-  skipped.
+  `<tag>-orgs.jsonl`.
 
 All three CLIs (`:scraper:run`, `:keep:run`, `:kep:run`) share the same flag
 syntax — `--mode=`, `--limit=`, `--include=`, `--dataDir=` — none of them are
@@ -156,19 +134,18 @@ positional. The generic scraper additionally requires `--repo=`.
 ```sh
 ./gradlew :keep:run --args="--mode=full --include=proposals"
 ./gradlew :kep:run  --args="--mode=update --include=issues,prs"
-./gradlew :keep:run --args="--mode=update --dataDir=/tmp/keep-scrape"
+./gradlew :keep:run --args="--limit=10 --dataDir=/tmp/keep-scrape"
 ```
 
 ### Where the data goes
 
-All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the users scraper, the
+All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the
 loader, and `:rq3`) are pinned to **`<repo-root>` as their JVM working directory**
 via the convention plugin. That means every relative `data/` reference resolves
 to a single shared `<repo-root>/data/` (gitignored), so:
 
 - `:keep:run` writes to `<root>/data/normalized/keep-*.jsonl`.
 - `:kep:run` writes to `<root>/data/normalized/kep-*.jsonl`.
-- `:scraper:runUsers` writes to `<root>/data/normalized/users.jsonl`.
 - `:scraper:run --repo=foo/bar` still gets its own subdir at
   `<root>/data/foo/bar/...` (per-repo isolation, derived from `--repo`).
 - `:loader:run` reads `<root>/data/normalized/*.jsonl` — no copy step needed.
@@ -180,16 +157,10 @@ keys like `keep.issues.updated_at` / `kep.issues.updated_at` (sync cursor) /
 `Kotlin/KEEP` (git cursor), so KEEP and KEP coexist in the same cache without
 collisions.
 
-If you previously ran the scrapers and have data under `keep/data/` / `kep/data/`
-/ `data/users/` from before this layout change, consolidate once:
+The manifests (`data/manifests/`) are made after every scrape run, and contain the summary of the run, e.g. the scraped
+item and request counts, timestamps, errors, etc.
 
-```sh
-mkdir -p data
-# Unix
-rsync -a keep/data/ data/ && rm -rf keep/data
-rsync -a kep/data/  data/ && rm -rf kep/data
-rsync -a data/users/normalized/ data/normalized/ && rm -rf data/users
-```
+The logs (`data/logs/`) stores the rolling log file of any JVM task (scraping, mapping, etc.).
 
 Layout under the unified `data/`:
 
@@ -219,11 +190,15 @@ data/
     keep-discussions.jsonl
     keep-discussion-comments.jsonl
     keep-discussion-comment-replies.jsonl
+    keep-users.jsonl
+    keep-user-orgs.jsonl
+    keep-orgs.jsonl
     keep-repo-info.jsonl
     keep-proposal-revisions.jsonl
     kep-*.jsonl                   # mirror of the above, plus:
-    kep-yaml-revisions.jsonl
-    kep-readme-revisions.jsonl
+    kep-revisions-yaml.jsonl
+    kep-revisions-readme.jsonl
+    kep-revisions-other.jsonl
   manifests/                      # per-run summary: counts, request totals, cancelled flag
     Kotlin_KEEP-full-2026-04-27T....json
   logs/scraper.log                # rolling log file (also goes to stdout)
@@ -286,20 +261,7 @@ New-Item data/spring-projects/spring-boot/STOP -ItemType File -Force
   `./gradlew --no-daemon :keep:run --args="full"`. SIGINT propagates from your
   shell through the gradle process down to the forked JVM, the JVM shutdown
   hook fires, and cleanup runs.
-- **Windows**: Ctrl-C against `gradlew.bat` is unreliable — the daemon swallows
-  the signal. Use the stop file instead, or run the installed distribution
-  directly (next section).
-
-#### Bypassing Gradle (Ctrl-C works reliably on all platforms)
-
-```sh
-./gradlew :scraper:installDist
-./scraper/build/install/scraper/bin/scraper --repo=owner/name --mode=full
-# Ctrl-C in this terminal goes straight to the JVM. Hook fires, cleanup runs.
-```
-
-Equivalents exist for `:keep` (`./keep/build/install/keep/bin/keep full`) and
-`:kep` (`./kep/build/install/kep/bin/kep full`).
+- **Windows**: Ctrl-C against `gradlew.bat` is unreliable — the daemon swallows the signal. Use the stop file instead.
 
 #### IntelliJ "stop" button
 
@@ -343,7 +305,7 @@ bash loader/build/export/keep-kep/apply.sh ../proposals.db
 `:loader:run` writes:
 
 ```
-loader/build/export/keep-kep/
+build/export/keep-kep/
   schema-copy.sql   # snapshot of schema.sql (sanity check vs the live .db)
   data.sql          # all INSERTs in FK-dependency order, single transaction
   apply.sh          # bash apply.sh path/to/proposals.db
@@ -376,7 +338,7 @@ contributors' data will be two separate `Person` rows after both pushes.
 The collaborative database schema lives in `schema.sql` at the monorepo root. The loader's
 `SchemaModel.kt` data classes mirror it; if the schema changes, update both
 together. The loader's per-stream → SQL mapping (`KeepMapper.kt` / `KepMapper.kt`)
-is TBD
+contains the logic for mapping raw data from `data/normalized/*.jsonl` to the common SQL schema.
 
 ## Build
 
@@ -384,9 +346,6 @@ is TBD
 ./gradlew build         # compile all modules
 ./gradlew clean         # wipe build outputs
 ```
-
-Per-module tasks (e.g. `:scraper:tasks --group scraping`) list the available
-runnable scrape entry points.
 
 ## Notes
 

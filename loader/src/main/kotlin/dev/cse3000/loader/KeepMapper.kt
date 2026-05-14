@@ -32,10 +32,15 @@ class KeepMapper(
         val proposalIntIds = proposals.map { it.proposalId.toInt() }.toSet()
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
+        val manualDiscussionToProposalsMap = mapOf(462 to setOf("0446", "0447"), 464 to setOf("0412"))
+
         val discussionToProposalsMap = proposalGroups
             .mapNotNull { group -> group.discussionId?.let { it to setOf(group.proposal.proposalId) } }
             .toMap()
-            .plus(mapOf(462 to setOf("0446", "0447"), 464 to setOf("0412"))) // manually linked discussions
+            .plus(manualDiscussionToProposalsMap)
+
+        log.info("Manually hardcoded discussion-proposals mappings: {}", manualDiscussionToProposalsMap)
+
         val prToProposalMap = proposalGroups
             .mapNotNull { group -> group.prId?.let { it to group.proposal.proposalId } }
             .toMap()
@@ -715,10 +720,10 @@ class KeepMapper(
 
     private fun mapDiscussions(discussionToProposalsMap: Map<Int, Set<String>>): List<Comment> {
         val discussionCommentJsons = readJsonlObjects(normalizedDir, "keep-discussion-comments")
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
+            .keepLatestScrapesBy { it.getJsonString("id") }
 
         val discussionThreads = readJsonlObjects(normalizedDir, "keep-discussions")
-            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.content }
+            .keepLatestScrapesBy { it.getJsonString("id") }
             .filter { it["category"]!!.jsonObject.getJsonString("name") == "keep-discussions" }
             .mapNotNull {
                 val number = it["number"]!!.jsonPrimitive.int
