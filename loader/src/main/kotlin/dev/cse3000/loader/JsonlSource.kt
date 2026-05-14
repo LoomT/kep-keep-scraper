@@ -3,6 +3,7 @@ package dev.cse3000.loader
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -26,3 +27,14 @@ fun readJsonlObjects(dir: Path, stream: String): Sequence<JsonObject> {
         }
     }
 }
+
+/**
+ * Keep only the latest scrapes for each key (selector).
+ */
+inline fun <T> Sequence<JsonObject>.keepLatestScrapesBy(crossinline selector: (JsonObject) -> T): Sequence<JsonObject> =
+    groupingBy { selector(it) }
+        .reduce { _, acc, obj ->
+            if (obj["_scraped_at"]!!.jsonPrimitive.content > acc["_scraped_at"]!!.jsonPrimitive.content) obj else acc
+        }
+        .values
+        .asSequence()

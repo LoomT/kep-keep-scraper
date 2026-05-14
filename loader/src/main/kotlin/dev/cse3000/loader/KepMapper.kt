@@ -90,9 +90,16 @@ class KepMapper(
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
         )
+        val commitStreams = listOf(
+            readJsonlObjects(normalizedDir, "kep-commits").keepLatestScrapesBy {
+                it.getJsonString("_path") + ":" + it.getJsonString("sha")
+            },
+            readJsonlObjects(normalizedDir, "kep-pr-commits").keepLatestScrapesBy {
+                it.getJsonString("sha")
+            }
+        )
         val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateCommitterAuthorEmails(
-            normalizedDir = normalizedDir,
-            commitStreams = listOf("kep-commits", "kep-pr-commits"),
+            commitStreams = commitStreams,
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
             resolveGHLogin = ::resolveGHLogin,

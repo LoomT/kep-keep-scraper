@@ -279,8 +279,7 @@ object CommonMapper {
      * the same backing map that [resolveGHLogin] mutates so it stays in sync.
      */
     fun populateCommitterAuthorEmails(
-        normalizedDir: Path,
-        commitStreams: List<String>,
+        commitStreams: List<Sequence<JsonObject>>,
         personByGHLogin: Map<String, Long>,
         personByEmail: MutableMap<String, Long>,
         resolveGHLogin: (String) -> Long,
@@ -291,7 +290,7 @@ object CommonMapper {
         var roleRecordsWithLogin = 0
         var newEmailLinks = 0
         for (stream in commitStreams) {
-            for (commit in readJsonlObjects(normalizedDir, stream)) {
+            for (commit in stream) {
                 processed++
                 val gitCommit = commit["commit"] as? JsonObject ?: continue
                 for (role in COMMIT_ROLES) {
@@ -344,9 +343,8 @@ object CommonMapper {
         }
 
         log.info(
-            "Commit enrichment ({}): scanned {} commits ({} author/committer records with login); " +
+            "Commit enrichment: scanned {} commits ({} author/committer records with login); " +
                     "newly linked {} emails to GH logins; {} logins now have a git name tally",
-            commitStreams.joinToString("+"),
             processed, roleRecordsWithLogin, newEmailLinks, gitFullNameByLogin.size,
         )
         return CommitEnrichment(gitNameByEmail, gitFullNameByLogin)

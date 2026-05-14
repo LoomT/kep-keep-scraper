@@ -50,9 +50,16 @@ class KeepMapper(
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
         )
+        val commitStreams = listOf(
+            readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
+                it.getJsonString("_path") + ":" + it.getJsonString("sha")
+            },
+            readJsonlObjects(normalizedDir, "keep-pr-commits").keepLatestScrapesBy {
+                it.getJsonString("sha")
+            }
+        )
         val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateCommitterAuthorEmails(
-            normalizedDir = normalizedDir,
-            commitStreams = listOf("keep-commits", "keep-pr-commits"),
+            commitStreams = commitStreams,
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
             resolveGHLogin = ::resolveGHLogin,
@@ -384,8 +391,12 @@ class KeepMapper(
      */
     private fun buildLoginOrEmailByProposalAuthor(): Map<Pair<String, String>, Pair<String?, String?>> {
         val result = mutableMapOf<Pair<String, String>, Pair<String?, String?>>()
-        for (commit in readJsonlObjects(normalizedDir, "keep-commits")) {
+        val latestJsonlObjects = readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
+            it.getJsonString("_path") + ":" + it.getJsonString("sha")
+        }
+        for (commit in latestJsonlObjects) {
             val path = commit.getJsonString("_path")
+            if (path.endsWith("TEMPLATE.md")) continue
             val proposalId = path.proposalPathToId()
             val gitCommit = commit["commit"] as? JsonObject ?: continue
             for (role in COMMIT_ROLES) {

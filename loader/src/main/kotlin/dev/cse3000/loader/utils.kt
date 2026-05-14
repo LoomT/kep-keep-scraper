@@ -13,17 +13,6 @@ internal inline fun <T, K> List<T>.distinctUntilChangedBy(selector: (T) -> K): L
         acc
     }
 
-/**
- * Keep only the latest scrapes for each key (selector).
- */
-internal inline fun <T> Sequence<JsonObject>.keepLatestScrapesBy(crossinline selector: (JsonObject) -> T): Sequence<JsonObject> =
-    groupingBy { selector(it) }
-        .reduce { _, acc, obj ->
-            if (obj["_scraped_at"]!!.jsonPrimitive.content > acc["_scraped_at"]!!.jsonPrimitive.content) obj else acc
-        }
-        .values
-        .asSequence()
-
 internal fun JsonObject.getJsonString(key: String): String {
     val jsonPrimitive = this[key]!!.jsonPrimitive
     assert(jsonPrimitive.isString)
