@@ -48,10 +48,20 @@ fun main() {
 
     val merged = keepRows + kepRows
 
-    SqlWriter(outDir).write(merged, schemaSource = schemaSource)
+    val exportTypes = parseExportTypes(System.getProperty("exportTypes"))
+    log.info("Export types: {}", exportTypes.joinToString(","))
+
+    if (ExportType.SQL in exportTypes) {
+        SqlWriter(outDir).write(merged, schemaSource = schemaSource)
+        log.info("Apply data.sql with: bash {}/apply.sh /path/to/proposals.db", outDir)
+    }
+    if (ExportType.DB in exportTypes) {
+        DbWriter(outDir).write(merged, schemaSource = schemaSource)
+        log.info("Wrote populated SQLite db at {}/data.db", outDir)
+    }
 
     log.info(
-        "Wrote {} (Project={} Person={} PersonUsername={} Organisation={} Affiliation={} " +
+        "Loaded into {} (Project={} Person={} PersonUsername={} Organisation={} Affiliation={} " +
                 "Proposal={} ProposalRevision={} ProposalRevisionAuthor={} StageHistory={} RelatedProposal={} Comment={})",
         outDir,
         merged.projects.size,
@@ -66,7 +76,25 @@ fun main() {
         merged.relatedProposals.size,
         merged.comments.size,
     )
-    log.info("Apply with: bash {}/apply.sh /path/to/proposals.db", outDir)
+}
+
+private enum class ExportType { DB, SQL }
+
+/**
+ * Parses the `-PexportTypes=<csv>` argument into the set of export targets.
+ * Accepts `db`, `sql`, or any comma-separated mix (e.g. `db,sql`, `sql,db`).
+ * Defaults to just `db` when the property is unset or blank. Unknown tokens
+ * fail fast.
+ */
+private fun parseExportTypes(raw: String?): Set<ExportType> {
+    val csv = raw?.trim()?.takeIf { it.isNotEmpty() } ?: "db"
+    return csv.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.map { token ->
+        when (token) {
+            "db" -> ExportType.DB
+            "sql" -> ExportType.SQL
+            else -> error("Unknown -PexportTypes token '$token'; supported: db, sql, db,sql")
+        }
+    }.toSet()
 }
 
 private fun sysIntProp(name: String): Int? = System.getProperty(name)?.toIntOrNull()

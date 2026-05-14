@@ -7,6 +7,7 @@ plugins {
 dependencies {
     implementation(projects.scraper)
     implementation(libs.kaml)
+    implementation(libs.sqliteJdbc)
     testImplementation(kotlin("test"))
 }
 
@@ -17,7 +18,15 @@ application {
 // Forward selected -P<name>=<value> properties to the JVM as system properties so Main.kt can read them.
 tasks.named<JavaExec>("run").configure {
     enableAssertions = true   // make `assert(...)` calls also work in non-debug mode.
-    listOf("keepProjectId", "kepProjectId", "dataDir", "out", "schemaPath", "monorepoRoot").forEach { name ->
+    listOf(
+        "keepProjectId",
+        "kepProjectId",
+        "dataDir",
+        "out",
+        "schemaPath",
+        "monorepoRoot",
+        "exportTypes"
+    ).forEach { name ->
         project.findProperty(name)?.let { systemProperty(name, it.toString()) }
     }
 }

@@ -162,7 +162,7 @@ class SqlWriter(private val outDir: Path) {
         appendLine("-- StageHistory (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO StageHistory(project_id, proposal_id, status_index, normalized_status, raw_status, created_at) " +
+                "INSERT INTO StageHistory(project_id, proposal_id, stage_index, normalised_status, raw_status, created_at) " +
                         "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, " +
                         "${e(it.normalizedStatus)}, ${e(it.rawStatus)}, ${e(it.createdAt)});",
             )
