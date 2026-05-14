@@ -36,8 +36,8 @@ class KepMapper(
     private val organisationIds: IdAllocator,
     private val commentIds: IdAllocator,
 ) {
-    private val personByGHLogin = mutableMapOf<String, Long>()
-    private val personByEmail = mutableMapOf<String, Long>()
+    private val personByGHLogin = mutableMapOf<String, Int>()
+    private val personByEmail = mutableMapOf<String, Int>()
 
     /**
      * Slug → bare proposal_id, populated during [mapProposals]. Used to resolve see-also /
@@ -120,8 +120,8 @@ class KepMapper(
 
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
-        val emittedPersonIds = mutableSetOf<Long>()
-        fun emitPerson(id: Long, fullName: String?) {
+        val emittedPersonIds = mutableSetOf<Int>()
+        fun emitPerson(id: Int, fullName: String?) {
             if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
         }
 
@@ -534,7 +534,7 @@ class KepMapper(
         }
     }
 
-    private fun resolveGHLogin(login: String): Long =
+    private fun resolveGHLogin(login: String): Int =
         personByGHLogin.getOrPut(login) { personIds.nextId() }
 
     /**

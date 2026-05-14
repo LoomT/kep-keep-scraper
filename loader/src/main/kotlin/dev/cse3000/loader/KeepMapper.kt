@@ -18,10 +18,10 @@ class KeepMapper(
     private val commentIds: IdAllocator,
 ) {
     /** Maps each GitHub `login` (assumed unique within a single contributor) to a stable person_id. */
-    private val personByGHLogin = mutableMapOf<String, Long>()
-    private val personByEmail = mutableMapOf<String, Long>()
-    private val personByName = mutableMapOf<String, Long>()
-    private val proposalsByPerson = mutableMapOf<Long, MutableSet<String>>()
+    private val personByGHLogin = mutableMapOf<String, Int>()
+    private val personByEmail = mutableMapOf<String, Int>()
+    private val personByName = mutableMapOf<String, Int>()
+    private val proposalsByPerson = mutableMapOf<Int, MutableSet<String>>()
 
     private val proposalTextMetaKeysSeen = mutableSetOf<String>()
 
@@ -83,7 +83,7 @@ class KeepMapper(
         // canonical and matches the IdAllocator order — name-only ids were allocated first).
         // Runs after every other person enrichment so personByGHLogin / personByEmail are
         // fully populated; the resulting `updatedPersonIdMap` is applied transitively below.
-        val updatedPersonIdMap = mutableMapOf<Long, Long>()
+        val updatedPersonIdMap = mutableMapOf<Int, Int>()
         val claimedLogins = mutableSetOf<String>()
         val claimedEmails = mutableSetOf<String>()
         val loginOrEmailByProposalAuthor = buildLoginOrEmailByProposalAuthor()
@@ -137,15 +137,15 @@ class KeepMapper(
 
         // Transitive closure of the substitution map. Defensive: if A→B and B→C ever co-exist
         // (shouldn't with the claim-set guards above, but cheap to compute), follow the chain.
-        val closedSub: Map<Long, Long> = buildMap {
+        val closedSub: Map<Int, Int> = buildMap {
             for (k in updatedPersonIdMap.keys) {
                 var cur = k
-                val seen = mutableSetOf<Long>()
+                val seen = mutableSetOf<Int>()
                 while (cur in updatedPersonIdMap && seen.add(cur)) cur = updatedPersonIdMap[cur]!!
                 put(k, cur)
             }
         }
-        val sub: (Long) -> Long = { id -> closedSub[id] ?: id }
+        val sub: (Int) -> Int = { id -> closedSub[id] ?: id }
 
         // Apply the closure to every map so later reads (mapOrgsAndAffiliations, the persons
         // build below, and the comments substitution) all see canonical ids. In particular,
@@ -171,8 +171,8 @@ class KeepMapper(
 
         val persons = mutableListOf<Person>()
         val personUsernames = mutableListOf<PersonUsername>()
-        val emittedPersonIds = mutableSetOf<Long>()
-        fun emitPerson(id: Long, fullName: String?) {
+        val emittedPersonIds = mutableSetOf<Int>()
+        fun emitPerson(id: Int, fullName: String?) {
             if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
         }
 
@@ -467,10 +467,10 @@ class KeepMapper(
         val prId: Int?,
     )
 
-    private fun resolveGHLogin(login: String): Long =
+    private fun resolveGHLogin(login: String): Int =
         personByGHLogin.getOrPut(login) { personIds.nextId() }
 
-    private fun resolveAuthor(name: String, proposalId: String): Long {
+    private fun resolveAuthor(name: String, proposalId: String): Int {
         val personId = personByName.getOrPut(name) { personIds.nextId() }
         proposalsByPerson.getOrPut(personId) { mutableSetOf() }.add(proposalId)
         return personId
@@ -798,7 +798,7 @@ class KeepMapper(
 
     private data class DiscussionThread(
         val proposalId: String,
-        val commentId: Long,
+        val commentId: Int,
         val discussionId: Int,
         val title: String,
         val content: String,

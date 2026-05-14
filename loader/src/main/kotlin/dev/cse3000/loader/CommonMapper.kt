@@ -72,7 +72,7 @@ object CommonMapper {
         projectId: Int,
         commentIds: IdAllocator,
         issueNumberToProposalId: (Int) -> String?,
-        resolveGHLogin: (String) -> Long,
+        resolveGHLogin: (String) -> Int,
     ): List<Comment> {
         val issueToIssueComments = readJsonlObjects(normalizedDir, issueCommentsStream)
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
@@ -145,7 +145,7 @@ object CommonMapper {
         projectId: Int,
         commentIds: IdAllocator,
         prToProposalMap: Map<Int, String>,
-        resolveGHLogin: (String) -> Long,
+        resolveGHLogin: (String) -> Int,
     ): List<Comment> {
         val prBodies: Map<Int, JsonObject> = readJsonlObjects(normalizedDir, pullsStream)
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
@@ -187,14 +187,14 @@ object CommonMapper {
             )
 
             val sorted = byPr[prNumber].orEmpty().sortedBy { it.getJsonString("created_at") }
-            val ghIdToAllocated = mutableMapOf<Long, Long>()
+            val ghIdToAllocated = mutableMapOf<Long, Int>()
             val emitted = mutableListOf<Comment>()
             var lastTopLevel = rootComment
 
             for (json in sorted) {
                 val ghId = json["id"]!!.jsonPrimitive.long
                 val parentGhId = json["in_reply_to_id"]?.jsonPrimitive?.longOrNull
-                val parentAllocated: Long? = if (parentGhId == null) {
+                val parentAllocated: Int? = if (parentGhId == null) {
                     lastTopLevel.commentId
                 } else {
                     ghIdToAllocated[parentGhId] ?: run {
@@ -238,8 +238,8 @@ object CommonMapper {
     fun populateUserEmails(
         normalizedDir: Path,
         usersStream: String,
-        personByGHLogin: Map<String, Long>,
-        personByEmail: MutableMap<String, Long>,
+        personByGHLogin: Map<String, Int>,
+        personByEmail: MutableMap<String, Int>,
     ) {
         readJsonlObjects(normalizedDir, usersStream)
             .keepLatestScrapesBy { it.getJsonString("login") }
@@ -280,9 +280,9 @@ object CommonMapper {
      */
     fun populateCommitterAuthorEmails(
         commitStreams: List<Sequence<JsonObject>>,
-        personByGHLogin: Map<String, Long>,
-        personByEmail: MutableMap<String, Long>,
-        resolveGHLogin: (String) -> Long,
+        personByGHLogin: Map<String, Int>,
+        personByEmail: MutableMap<String, Int>,
+        resolveGHLogin: (String) -> Int,
     ): CommitEnrichment {
         val nameCountsByEmail = mutableMapOf<String, MutableMap<String, Int>>()
         val nameCountsByLogin = mutableMapOf<String, MutableMap<String, Int>>()
@@ -359,7 +359,7 @@ object CommonMapper {
     fun ghLoginsToNames(
         normalizedDir: Path,
         usersStream: String,
-        personByGHLogin: Map<String, Long>,
+        personByGHLogin: Map<String, Int>,
     ): Map<String, String> =
         readJsonlObjects(normalizedDir, usersStream)
             .keepLatestScrapesBy { it.getJsonString("login") }
@@ -398,7 +398,7 @@ object CommonMapper {
         orgsStream: String,
         usersStream: String,
         userOrgsStream: String,
-        personByGHLogin: Map<String, Long>,
+        personByGHLogin: Map<String, Int>,
         organisationIds: IdAllocator,
     ): Pair<List<Organisation>, List<Affiliation>> {
         val orgsByLogin: Map<String, JsonObject> = readJsonlObjects(normalizedDir, orgsStream)
@@ -415,10 +415,10 @@ object CommonMapper {
             .filter { it.getJsonString("_login") in personByGHLogin.keys }
             .toList()
 
-        val orgIdByCanonName = mutableMapOf<String, Long>()
+        val orgIdByCanonName = mutableMapOf<String, Int>()
         val organisations = mutableListOf<Organisation>()
 
-        fun ensureOrg(rawName: String): Long? {
+        fun ensureOrg(rawName: String): Int? {
             val display = rawName.trim().removePrefix("@").trim()
             if (display.isEmpty()) return null
             val canon = display.lowercase()
@@ -429,9 +429,9 @@ object CommonMapper {
             }
         }
 
-        val affiliationKeys = mutableSetOf<Pair<Long, Long>>()
+        val affiliationKeys = mutableSetOf<Pair<Int, Int>>()
         val affiliations = mutableListOf<Affiliation>()
-        fun addAffiliation(orgId: Long?, personId: Long) {
+        fun addAffiliation(orgId: Int?, personId: Int) {
             if (orgId == null) return
             if (affiliationKeys.add(orgId to personId)) {
                 affiliations += Affiliation(organisationId = orgId, personId = personId)

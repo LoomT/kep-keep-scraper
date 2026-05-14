@@ -1,6 +1,6 @@
 package dev.cse3000.loader
 
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Allocates sequential IDs in the half-open range `[base, base + capacity)`.
@@ -10,10 +10,10 @@ import java.util.concurrent.atomic.AtomicLong
  * Person/Organisation/Comment IDs allocated by different contributors never
  * collide.
  */
-class IdAllocator(private val base: Long, private val capacity: Long = 1_000_000L) {
-    private val next = AtomicLong(base)
+class IdAllocator(private val base: Int, private val capacity: Int = 1_000_000) {
+    private val next = AtomicInteger(base)
 
-    fun nextId(): Long {
+    fun nextId(): Int {
         val id = next.getAndIncrement()
         check(id < base + capacity) {
             "IdAllocator exhausted: base=$base capacity=$capacity. Bump capacity in IdAllocator construction."

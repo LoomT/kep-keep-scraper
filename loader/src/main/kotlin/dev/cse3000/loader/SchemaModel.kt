@@ -12,25 +12,25 @@ data class Project(
 )
 
 data class Person(
-    val personId: Long,
+    val personId: Int,
     val fullName: String?,
 )
 
 data class PersonUsername(
-    val personId: Long,
+    val personId: Int,
     val domain: String,
     val username: String,
     val realName: String?,
 )
 
 data class Organisation(
-    val organisationId: Long,
+    val organisationId: Int,
     val organisationName: String,
 )
 
 data class Affiliation(
-    val organisationId: Long,
-    val personId: Long,
+    val organisationId: Int,
+    val personId: Int,
 )
 
 data class Proposal(
@@ -54,7 +54,7 @@ data class ProposalRevisionAuthor(
     val projectId: Int,
     val proposalId: String,
     val revisionIndex: Int,
-    val authorId: Long,
+    val authorId: Int,
 )
 
 data class StageHistory(
@@ -75,11 +75,11 @@ data class RelatedProposal(
 )
 
 data class Comment(
-    val commentId: Long,
-    val authorId: Long,
+    val commentId: Int,
+    val authorId: Int,
     val projectId: Int,
     val proposalId: String,
-    val commentOnCommentId: Long?,
+    val commentOnCommentId: Int?,
     val createdAt: String?,          // ISO-8601
     val content: String,
 )

@@ -82,7 +82,7 @@ class DbWriter(private val outDir: Path) {
             "INSERT INTO Person(person_id, full_name) VALUES (?, ?)",
             items,
         ) { ps, it ->
-            ps.setLong(1, it.personId)
+            ps.setInt(1, it.personId)
             ps.setStringOrNull(2, it.fullName)
         }
 
@@ -92,7 +92,7 @@ class DbWriter(private val outDir: Path) {
             "INSERT INTO Organisation(organisation_id, organisation_name) VALUES (?, ?)",
             items,
         ) { ps, it ->
-            ps.setLong(1, it.organisationId)
+            ps.setInt(1, it.organisationId)
             ps.setString(2, it.organisationName)
         }
 
@@ -102,7 +102,7 @@ class DbWriter(private val outDir: Path) {
             "INSERT INTO PersonUsername(person_id, domain, username, real_name) VALUES (?, ?, ?, ?)",
             items,
         ) { ps, it ->
-            ps.setLong(1, it.personId)
+            ps.setInt(1, it.personId)
             ps.setString(2, it.domain)
             ps.setString(3, it.username)
             ps.setStringOrNull(4, it.realName)
@@ -114,8 +114,8 @@ class DbWriter(private val outDir: Path) {
             "INSERT INTO Affiliation(organisation_id, person_id) VALUES (?, ?)",
             items,
         ) { ps, it ->
-            ps.setLong(1, it.organisationId)
-            ps.setLong(2, it.personId)
+            ps.setInt(1, it.organisationId)
+            ps.setInt(2, it.personId)
         }
 
     private fun insertProposals(conn: Connection, items: List<Proposal>) =
@@ -155,7 +155,7 @@ class DbWriter(private val outDir: Path) {
             ps.setInt(1, it.projectId)
             ps.setString(2, it.proposalId)
             ps.setInt(3, it.revisionIndex)
-            ps.setLong(4, it.authorId)
+            ps.setInt(4, it.authorId)
         }
 
     private fun insertStageHistory(conn: Connection, items: List<StageHistory>) =
@@ -194,11 +194,11 @@ class DbWriter(private val outDir: Path) {
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
             items,
         ) { ps, it ->
-            ps.setLong(1, it.commentId)
-            ps.setLong(2, it.authorId)
+            ps.setInt(1, it.commentId)
+            ps.setInt(2, it.authorId)
             ps.setInt(3, it.projectId)
             ps.setString(4, it.proposalId)
-            if (it.commentOnCommentId != null) ps.setLong(5, it.commentOnCommentId) else ps.setNull(5, Types.BIGINT)
+            if (it.commentOnCommentId != null) ps.setInt(5, it.commentOnCommentId) else ps.setNull(5, Types.BIGINT)
             ps.setStringOrNull(6, it.createdAt)
             ps.setString(7, it.content)
         }

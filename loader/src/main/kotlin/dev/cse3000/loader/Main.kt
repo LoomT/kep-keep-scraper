@@ -21,8 +21,11 @@ fun main() {
         System.getProperty("monorepoRoot")?.let { Paths.get(it, "schema.sql") },
     ).filterNotNull().firstOrNull { java.nio.file.Files.exists(it) }
 
-    val keepBaseId = keepProjectId.toLong() * 1_000_000L
-    val kepBaseId = kepProjectId.toLong() * 1_000_000L
+    assert(keepProjectId in 0..2_000 && kepProjectId in 0..2_000) {
+        "Project IDs must be in [0,2000] due to SQLite's INTEGER size limitations."
+    }
+    val keepBaseId = keepProjectId * 1_000_000
+    val kepBaseId = kepProjectId * 1_000_000
 
     log.info(
         "Loader run: keepProjectId={} kepProjectId={} dataDir={} out={} keepIdBase={} kepIdBase={}",
