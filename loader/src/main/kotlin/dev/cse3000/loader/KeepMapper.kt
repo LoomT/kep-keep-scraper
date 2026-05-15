@@ -63,7 +63,7 @@ class KeepMapper(
                 it.getJsonString("sha")
             }
         )
-        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateCommitterAuthorEmails(
+        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateAuthorEmails(
             commitStreams = commitStreams,
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
@@ -390,7 +390,7 @@ class KeepMapper(
      * `keep-commits.jsonl` (which contains commits scoped to proposal markdown files via
      * the `_path` meta). For every commit's author/committer, we record a "this name committed to this proposal"
      * entry — letting [mapProposals] upgrade matching proposal-meta-text authors from name-only
-     * resolution to a real GH login or at least an email if GitHub account is not linked.
+     * resolution to a real GH login or at least a git author email if GitHub account is not linked.
      *
      * On duplicate key conflict, keeps the earlier entry.
      */
@@ -404,22 +404,20 @@ class KeepMapper(
             if (path.endsWith("TEMPLATE.md")) continue
             val proposalId = path.proposalPathToId()
             val gitCommit = commit["commit"] as? JsonObject ?: continue
-            for (role in COMMIT_ROLES) {
-                val gitInfo = gitCommit[role] as? JsonObject ?: continue
-                val ghLogin = (commit[role] as? JsonObject)
-                    ?.getJsonStringOrNull("login")
-                    ?.takeIf { it.isNotBlank() }
-                val gitEmail = gitInfo.getJsonStringOrNull("email")
-                    ?.takeIf { it.isNotBlank() }
-                if (ghLogin == null && gitEmail == null) continue
-                val gitName = gitInfo.getJsonStringOrNull("name")
-                    ?.replace(".", " ")
-                    ?.takeIf { it.isNotBlank() } ?: continue
-                val existingPair = result[proposalId to gitName.lowercase()]
-                if (existingPair == null) result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
-                else if (existingPair.first == null && ghLogin != null)
-                    result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
-            }
+            val gitInfo = gitCommit["author"] as? JsonObject ?: continue
+            val ghLogin = (commit["author"] as? JsonObject)
+                ?.getJsonStringOrNull("login")
+                ?.takeIf { it.isNotBlank() }
+            val gitEmail = gitInfo.getJsonStringOrNull("email")
+                ?.takeIf { it.isNotBlank() }
+            if (ghLogin == null && gitEmail == null) continue
+            val gitName = gitInfo.getJsonStringOrNull("name")
+                ?.replace(".", " ")
+                ?.takeIf { it.isNotBlank() } ?: continue
+            val existingPair = result[proposalId to gitName.lowercase()]
+            if (existingPair == null) result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
+            else if (existingPair.first == null && ghLogin != null)
+                result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
         }
         return result
     }
@@ -832,7 +830,5 @@ class KeepMapper(
         private val PR_URL_REGEX =
             Regex("""https://github\.com/Kotlin/KEEP/pull/(\d+)""")
         private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d{4})""")
-
-        private val COMMIT_ROLES = listOf("author", "committer")
     }
 }

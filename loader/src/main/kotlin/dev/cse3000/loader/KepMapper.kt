@@ -98,7 +98,7 @@ class KepMapper(
                 it.getJsonString("sha")
             }
         )
-        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateCommitterAuthorEmails(
+        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateAuthorEmails(
             commitStreams = commitStreams,
             personByGHLogin = personByGHLogin,
             personByEmail = personByEmail,
