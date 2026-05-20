@@ -1,8 +1,8 @@
-package dev.cse3000.rq3
+package dev.cse3000.analysis
 
 import org.slf4j.LoggerFactory
 
-private val log = LoggerFactory.getLogger("dev.cse3000.rq3.Main")
+private val log = LoggerFactory.getLogger("dev.cse3000.analysis.MainKt")
 
 private val TABLES = listOf(
     "Project",

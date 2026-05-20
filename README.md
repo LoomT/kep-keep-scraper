@@ -1,18 +1,21 @@
 # CSE3000_RQ3-KEEP-KEP
 
+This project includes a GitHub Miner for [KEEP](https://github.com/Kotlin/KEEP)s
+and [KEP](https://github.com/kubernetes/enhancements)s, and an analyser of Software Enhancement Proposal evolution.
+
 ## Modules
 
-| Module     | Purpose                                                                                                                                             |
-|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `:scraper` | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                                                                   |
-| `:keep`    | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk and corresponding commits from GH scraping.                         |
-| `:kep`     | KEP-specific scraper (`kubernetes/enhancements`). Includes the proposal kep.yaml + README revision walk and corresponding commits from GH scraping. |
-| `:loader`  | Maps the KEEPs and KEPs to the common SQL schema and creates `data.sql` for loading into a database.                                                |
-| `:rq3`     | Analysis module (TBD).                                                                                                                              |
+| Module      | Purpose                                                                                                                                             |
+|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `:scraper`  | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                                                                   |
+| `:keep`     | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk and corresponding commits from GH scraping.                         |
+| `:kep`      | KEP-specific scraper (`kubernetes/enhancements`). Includes the proposal kep.yaml + README revision walk and corresponding commits from GH scraping. |
+| `:loader`   | Maps the KEEPs and KEPs to the common SQL schema and exports `data.sql/data.db`.                                                                    |
+| `:analysis` | Analysis module (TBD).                                                                                                                              |
 
 ## Prerequisites
 
-1. JDK 25 (or use `./gradlew` with a foojay-resolved toolchain — done automatically).
+1. JDK 25 or newer (or use `./gradlew` with a foojay-resolved toolchain — done automatically).
 2. A GitHub Personal Access Token in the `GITHUB_TOKEN` environment variable for scraping GitHub.
     - `repo:public_repo` scope is sufficient (both KEEP and KEP repos are public).
     - Authenticated requests get the 5000 req/hr REST quota and 5000 points/hr GraphQL quota.
@@ -35,7 +38,7 @@ With subtrees, every contributor's files live directly in the monorepo's own com
 `.gitmodules`), so a plain `git clone <monorepo-url>`
 fetches everything in one shot. The Gradle convention plugin sets
 `-DmonorepoRoot=<parent dir>` for every `:run` task, so the loader and
-`:rq3` discover `../schema.sql` / `../proposals.db` automatically.
+`:analysis` discover `../schema.sql` / `../proposals.db` automatically.
 
 ### Open this project from a monorepo clone
 
@@ -52,15 +55,15 @@ cd cse3000-sep/rq3-keep-kep
 idea .   # or open the folder via File ▸ Open in IntelliJ
 
 # 3. Run any Gradle command exactly as in standalone mode. The loader picks
-#    ../schema.sql automatically; :rq3 picks ../proposals.db automatically.
+#    ../schema.sql automatically; :analysis picks ../proposals.db automatically.
 ./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
-./gradlew :rq3:run
+./gradlew :analysis:run
 ```
 
 Override knobs (any `:run` task):
 
 - `-PschemaPath=path/to/schema.sql` — explicit schema location for the loader.
-- `-PsharedDbPath=path/to/proposals.db` — explicit shared-DB location for `:rq3`.
+- `-PsharedDbPath=path/to/proposals.db` — explicit shared-DB location for `:analysis`.
 - `-PmonorepoRoot=path/to/monorepo` — override the auto-detected monorepo root.
 
 ## Running the scrapers
@@ -139,8 +142,8 @@ positional. The generic scraper additionally requires `--repo=`.
 
 ### Where the data goes
 
-All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the
-loader, and `:rq3`) are pinned to **`<repo-root>` as their JVM working directory**
+All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the loader, and `:analysis`) are pinned to **`<repo-root>` as
+their JVM working directory**
 via the convention plugin. That means every relative `data/` reference resolves
 to a single shared `<repo-root>/data/` (gitignored), so:
 
@@ -149,7 +152,7 @@ to a single shared `<repo-root>/data/` (gitignored), so:
 - `:scraper:run --repo=foo/bar` still gets its own subdir at
   `<root>/data/foo/bar/...` (per-repo isolation, derived from `--repo`).
 - `:loader:run` reads `<root>/data/normalized/*.jsonl` — no copy step needed.
-- `:rq3:syncSharedDb` writes to `<root>/data/shared/proposals.db`; `:rq3:run`
+- `:analysis:syncSharedDb` writes to `<root>/data/shared/proposals.db`; `:analysis:run`
   reads from there.
 
 The cache (`data/cache/`) is keyed by URL (raw cache + ETags) and by qualified
@@ -278,14 +281,14 @@ next run picks up at the last fully-processed item. ETag-cached URLs return
 304 immediately for everything unchanged since the last successful fetch —
 the manifest's `requests_304` count tells you how many.
 
-## Sharing data with collaborators
+## Processing and sharing data with collaborators
 
 This scraper feeds into a **shared SQLite database**.
 
 ### One-shot application
 
-The `:loader` module produces `data.sql` from the local `data/normalized/*.jsonl`
-streams and emits `apply.sh` / `apply.bat` helpers. The application is **one-shot**:
+The `:loader` module produces `data.db` / `data.sql` from the local `data/normalized/*.jsonl`
+streams and emits `apply.sh` / `apply.bat` helpers for applying `data.sql`. The application is **one-shot**:
 re-applying the same SQL to a database that already contains your project_ids'
 rows will fail on PRIMARY KEY violations.
 
@@ -294,12 +297,14 @@ rows will fail on PRIMARY KEY violations.
 ./gradlew :keep:run
 ./gradlew :kep:run
 
-# 2. Generate SQL
+# 2a. Export SQLite .db file
 ./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
 
-# 3. Apply to the shared proposals.db. In the monorepo-subtree layout, the .db
-#    lives at the monorepo root one level up:
-bash loader/build/export/keep-kep/apply.sh ../proposals.db
+# 2b. Export .sql file with insert statements
+./gradlew :loader:run -PexportTypes="sql,db" -PkepProjectId=8 -PkeepProjectId=9
+
+# 3b. Apply exported .sql to the shared .db file
+bash build/export/keep-kep/apply.sh ../proposals.db
 ```
 
 `:loader:run` writes:
@@ -310,28 +315,28 @@ build/export/keep-kep/
   data.sql          # all INSERTs in FK-dependency order, single transaction
   apply.sh          # bash apply.sh path/to/proposals.db
   apply.bat         # Windows equivalent
+  data.db           # SQLite .db file according to the schema.sql
 ```
 
 `person_id` / `organisation_id` / `comment_id` values are allocated locally in the half-open range
 `[project_id × 1_000_000, +1_000_000)` so they can't
-collide with other contributors' allocations. Person dedup across projects is
-deferred to `:rq3` post-processing, e.g., the same GitHub user appearing in two
+collide with other contributors' allocations. Person dedup across projects is deferred to `:analysis` post-processing,
+e.g., the same GitHub user appearing in two
 contributors' data will be two separate `Person` rows after both pushes.
 
-### Analysis in `:rq3`
+### Analysis in `:analysis`
 
 ```sh
 # Copy the .db into the local data.
-./gradlew :rq3:syncSharedDb -PsharedDbPath=../proposals.db
-./gradlew :rq3:run    # opens data/shared/proposals.db
+./gradlew :analysis:syncSharedDb -PsharedDbPath=../proposals.db
+./gradlew :analysis:run    # opens data/shared/proposals.db
 ```
 
 `syncSharedDb` copies the .db into `data/shared/proposals.db` (gitignored).
-`:rq3:run` opens it via `sqlite-jdbc`. Resolution priority for the shared DB:
-`-PsharedDbPath` (explicit) > `<monorepoRoot>/proposals.db` (if it exists) >
-`<repo-root>/data/shared/proposals.db` (the synced snapshot).
+`:analysis:run` opens it via `sqlite-jdbc`. Resolution priority for the shared DB:
+`-PsharedDbPath` (explicit) > `<repo-root>/data/shared/proposals.db` (the synced snapshot).
 
-[//]: # (TODO expand after rq3 is done)
+[//]: # (TODO expand after analysis is done)
 
 ### Schema is `schema.sql`
 
@@ -351,4 +356,3 @@ contains the logic for mapping raw data from `data/normalized/*.jsonl` to the co
 
 - Multi-module Gradle setup; shared build logic is in `buildSrc/`.
 - Versions are pinned in `gradle/libs.versions.toml`.
-- Build cache and configuration cache are enabled — see `gradle.properties`.

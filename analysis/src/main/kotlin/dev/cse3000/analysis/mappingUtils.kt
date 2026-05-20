@@ -1,4 +1,4 @@
-package dev.cse3000.rq3
+package dev.cse3000.analysis
 
 /**
  * Whitelist of email domains we trust to indicate a real company affiliation.

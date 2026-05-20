@@ -31,7 +31,7 @@ tasks.withType<Test>().configureEach {
 
 // Run all `JavaExec`-based tasks (application plugin's `run`)
 // with the repo root as their working directory. That way every scraper's relative
-// `data/` path (Env.dataDir() and the rq3 sync target) resolves to a single shared `<root>/data/`
+// `data/` path (Env.dataDir() and the analysis sync target) resolves to a single shared `<root>/data/`
 // instead of `<module>/data/`, and the loader can read everything from one place without a copy step.
 tasks.withType<JavaExec>().configureEach {
     workingDir = rootProject.projectDir

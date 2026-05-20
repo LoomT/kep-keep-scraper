@@ -5,7 +5,7 @@ import dev.cse3000.gh.cli.runScrape
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
-private val log = LoggerFactory.getLogger("dev.cse3000.keep.Main")
+private val log = LoggerFactory.getLogger("dev.cse3000.keep.MainKt")
 
 fun main(args: Array<String>): Unit = runBlocking {
     val parsed = parseScrapeArgs(args, "keep")

@@ -5,7 +5,7 @@ import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import java.nio.file.Paths
 
-private val log = LoggerFactory.getLogger("dev.cse3000.gh.cli.Main")
+private val log = LoggerFactory.getLogger("dev.cse3000.gh.cli.MainKt")
 
 fun main(args: Array<String>): Unit = runBlocking {
     val flags = args.filter { it.startsWith("--") }

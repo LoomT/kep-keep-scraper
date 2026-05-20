@@ -17,6 +17,6 @@ include(":scraper")
 include(":keep")
 include(":kep")
 include(":loader")
-include(":rq3")
+include(":analysis")
 
 rootProject.name = "CSE3000_RQ3-KEEP-KEP"

@@ -4,7 +4,7 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.nio.file.Paths
 
-private val log = LoggerFactory.getLogger("dev.cse3000.loader.Main")
+private val log = LoggerFactory.getLogger("dev.cse3000.loader.MainKt")
 
 fun main() {
     val keepProjectId = sysIntProp("keepProjectId")
@@ -14,7 +14,7 @@ fun main() {
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
     val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
     // Schema source resolution, in priority order:
-    // 1. -PschemaPath=<path> — explicit override (mirrors -PsharedDbPath in :rq3).
+    // 1. -PschemaPath=<path> — explicit override (mirrors -PsharedDbPath in :analysis).
     // 2. -PmonorepoRoot=<path>/schema.sql — by default, it's the parent of rootProject.projectDir.
     val schemaSource = sequenceOf(
         System.getProperty("schemaPath")?.let(Paths::get),

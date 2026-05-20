@@ -14,7 +14,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("dev.cse3000.rq3.MainKt")
+    mainClass.set("dev.cse3000.analysis.MainKt")
 }
 
 // Forward -PsharedDbPath / -PrunReport flags to the JVM.
@@ -25,8 +25,8 @@ tasks.named<JavaExec>("run").configure {
 }
 
 tasks.register("syncSharedDb") {
-    group = "rq3"
-    description = "Copy the shared proposals.db from -PsharedDbPath into rq3/data/shared/."
+    group = "analysis"
+    description = "Copy the shared proposals.db from -PsharedDbPath into data/shared/."
     doLast {
         val src = (project.findProperty("sharedDbPath") as? String)?.takeIf { it.isNotBlank() }
             ?: System.getenv("SHARED_DB_PATH")?.takeIf { it.isNotBlank() }

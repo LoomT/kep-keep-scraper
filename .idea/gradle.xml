@@ -19,11 +19,11 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/analysis" />
             <option value="$PROJECT_DIR$/buildSrc" />
             <option value="$PROJECT_DIR$/keep" />
             <option value="$PROJECT_DIR$/kep" />
             <option value="$PROJECT_DIR$/loader" />
-            <option value="$PROJECT_DIR$/rq3" />
             <option value="$PROJECT_DIR$/scraper" />
           </set>
         </option>

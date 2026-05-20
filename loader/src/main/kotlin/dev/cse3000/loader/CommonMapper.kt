@@ -377,7 +377,7 @@ object CommonMapper {
      * Orgs are deduped by canonical name (lowercased, trimmed, leading `@` stripped) so
      * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains` all end up as separate rows
      * ONLY if they differ after that normalisation. (They often will — string matching is
-     * intentionally conservative; downstream RQ3 dedup can run a fuzzier merge if desired.)
+     * intentionally conservative; downstream analysis dedup can run a fuzzier merge if desired.)
      *
      * Mapping business email domains to organisations is also possible but intentionally
      * left to downstream RQs since the emails are available there anyway.

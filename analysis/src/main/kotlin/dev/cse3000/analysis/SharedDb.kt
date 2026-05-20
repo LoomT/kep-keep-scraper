@@ -1,4 +1,4 @@
-package dev.cse3000.rq3
+package dev.cse3000.analysis
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -8,8 +8,8 @@ import java.sql.DriverManager
 
 /**
  * Opens the synced shared SQLite database. Default location is
- * `<repo-root>/data/shared/proposals.db` (populated by `:rq3:syncSharedDb`).
- * The `:rq3:run` task is configured to use the repo root as its working
+ * `<repo-root>/data/shared/proposals.db` (populated by `:analysis:syncSharedDb`).
+ * The `:analysis:run` task is configured to use the repo root as its working
  * directory so that the relative `data/shared/proposals.db` resolves to
  * the unified data dir shared by all the scrapers.
  *
@@ -25,7 +25,7 @@ object SharedDb {
 
     fun open(path: Path = resolvePath()): Connection {
         require(Files.exists(path)) {
-            "Shared database not found at $path. Run `:rq3:syncSharedDb -PsharedDbPath=...` first."
+            "Shared database not found at $path. Run `:analysis:syncSharedDb -PsharedDbPath=...` first."
         }
         return DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath()}")
     }
