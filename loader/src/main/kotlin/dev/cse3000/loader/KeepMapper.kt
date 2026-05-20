@@ -205,11 +205,9 @@ class KeepMapper(
     }
 
     private fun mapProposals(): List<ProposalGroup> {
-        val proposalGroupedCommits = readJsonlObjects(
-            normalizedDir,
-            "keep-proposal-revisions"
-        ) // sorting already done in [dev.cse3000.gh.git.RevisionWalker.listPathsAtHead]
+        val proposalGroupedCommits = readJsonlObjects(normalizedDir, "keep-proposal-revisions")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .sortedBy { it.getJsonString("committed_at") }
             .groupBy { it.getJsonString("path") }
             .filterNot { it.key.contains("TEMPLATE.md") }
             .map { (path, jsons) ->
@@ -293,11 +291,11 @@ class KeepMapper(
             val statusRevisions = proposalCommits.second
                 .distinctUntilChangedBy { it.proposalData.rawStatus }
                 .filter { it.proposalData.rawStatus != null }
-                .map { proposalCommit ->
+                .mapIndexed { index, proposalCommit ->
                     ProposalStatus(
                         projectId = projectId,
                         proposalId = proposalId,
-                        statusIndex = proposalCommit.index,
+                        statusIndex = index,
                         rawStatus = proposalCommit.proposalData.rawStatus,
                         normalisedStatus = proposalCommit.proposalData.normalizedStatus,
                         createdAt = proposalCommit.commitedAt,

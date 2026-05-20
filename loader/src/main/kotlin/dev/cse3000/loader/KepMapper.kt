@@ -192,9 +192,11 @@ class KepMapper(
     private fun mapProposals(): List<ProposalGroup> {
         val yamlByKey = readJsonlObjects(normalizedDir, "kep-revisions-yaml")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .sortedBy { it.getJsonString("committed_at") }
             .toList()
         val readmeByKey = readJsonlObjects(normalizedDir, "kep-revisions-readme")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .sortedBy { it.getJsonString("committed_at") }
             .toList()
 
         // Pre-migration single-file KEPs: `keps/<sig>/<dateOrSlug>-*.md` — exactly 3 path
@@ -203,6 +205,7 @@ class KepMapper(
         // a single modern KEP dir.
         val oldFormatByPath = readJsonlObjects(normalizedDir, "kep-revisions-other")
             .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .sortedBy { it.getJsonString("committed_at") }
             .filter {
                 val p = it.getJsonString("path")
                 p.endsWith(".md", ignoreCase = true) && p.count { c -> c == '/' } == 2 && p.startsWith("keps/")
