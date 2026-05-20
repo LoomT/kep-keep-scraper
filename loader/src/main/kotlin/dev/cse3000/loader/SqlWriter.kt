@@ -37,12 +37,12 @@ class SqlWriter(private val outDir: Path) {
             appendProjects(rows.projects)
             appendPersons(rows.persons)
             appendOrganisations(rows.organisations)
-            appendPersonUsernames(rows.personUsernames)
+            appendPersonIdentifiers(rows.personIdentifiers)
             appendAffiliations(rows.affiliations)
             appendProposals(rows.proposals)
             appendProposalRevisions(rows.proposalRevisions)
             appendProposalRevisionAuthors(rows.proposalRevisionAuthors)
-            appendStageHistory(rows.stageHistory)
+            appendProposalStatuses(rows.proposalStatuses)
             appendRelatedProposals(rows.relatedProposals)
             appendComments(rows.comments)
             appendLine("COMMIT;")
@@ -96,13 +96,13 @@ class SqlWriter(private val outDir: Path) {
         appendLine()
     }
 
-    private fun StringBuilder.appendPersonUsernames(items: List<PersonUsername>) {
+    private fun StringBuilder.appendPersonIdentifiers(items: List<PersonIdentifier>) {
         if (items.isEmpty()) return
-        appendLine("-- PersonUsername (${items.size})")
+        appendLine("-- PersonIdentifier (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO PersonUsername(person_id, domain, username, real_name) " +
-                        "VALUES (${e(it.personId)}, ${e(it.domain)}, ${e(it.username)}, ${e(it.realName)});",
+                "INSERT INTO PersonIdentifier(person_id, domain, identifier_type, identifier) " +
+                        "VALUES (${e(it.personId)}, ${e(it.domain)}, ${e(it.identifierType)}, ${e(it.identifier)});",
             )
         }
         appendLine()
@@ -157,14 +157,14 @@ class SqlWriter(private val outDir: Path) {
         appendLine()
     }
 
-    private fun StringBuilder.appendStageHistory(items: List<StageHistory>) {
+    private fun StringBuilder.appendProposalStatuses(items: List<ProposalStatus>) {
         if (items.isEmpty()) return
-        appendLine("-- StageHistory (${items.size})")
+        appendLine("-- ProposalStatus (${items.size})")
         for (it in items) {
             appendLine(
-                "INSERT INTO StageHistory(project_id, proposal_id, stage_index, normalised_status, raw_status, created_at) " +
-                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.stageIndex)}, " +
-                        "${e(it.normalizedStatus)}, ${e(it.rawStatus)}, ${e(it.createdAt)});",
+                "INSERT INTO ProposalStatus(project_id, proposal_id, status_index, raw_status, normalised_status, created_at) " +
+                        "VALUES (${e(it.projectId)}, ${e(it.proposalId)}, ${e(it.statusIndex)}, " +
+                        "${e(it.rawStatus)}, ${e(it.normalisedStatus)}, ${e(it.createdAt)});",
             )
         }
         appendLine()

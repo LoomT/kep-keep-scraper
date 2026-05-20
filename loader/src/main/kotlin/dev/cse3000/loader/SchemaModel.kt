@@ -16,11 +16,11 @@ data class Person(
     val fullName: String?,
 )
 
-data class PersonUsername(
+data class PersonIdentifier(
     val personId: Int,
     val domain: String,
-    val username: String,
-    val realName: String?,
+    val identifierType: String,
+    val identifier: String,
 )
 
 data class Organisation(
@@ -57,12 +57,12 @@ data class ProposalRevisionAuthor(
     val authorId: Int,
 )
 
-data class StageHistory(
+data class ProposalStatus(
     val projectId: Int,
     val proposalId: String,
-    val stageIndex: Int,
-    val normalizedStatus: String,
+    val statusIndex: Int,
     val rawStatus: String?,
+    val normalisedStatus: String,
     val createdAt: String,           // ISO-8601
 )
 
@@ -88,26 +88,26 @@ data class Comment(
 data class Rows(
     val projects: List<Project> = emptyList(),
     val persons: List<Person> = emptyList(),
-    val personUsernames: List<PersonUsername> = emptyList(),
+    val personIdentifiers: List<PersonIdentifier> = emptyList(),
     val organisations: List<Organisation> = emptyList(),
     val affiliations: List<Affiliation> = emptyList(),
     val proposals: List<Proposal> = emptyList(),
     val proposalRevisions: List<ProposalRevision> = emptyList(),
     val proposalRevisionAuthors: List<ProposalRevisionAuthor> = emptyList(),
-    val stageHistory: List<StageHistory> = emptyList(),
+    val proposalStatuses: List<ProposalStatus> = emptyList(),
     val relatedProposals: List<RelatedProposal> = emptyList(),
     val comments: List<Comment> = emptyList(),
 ) {
     operator fun plus(other: Rows): Rows = Rows(
         projects = projects + other.projects,
         persons = persons + other.persons,
-        personUsernames = personUsernames + other.personUsernames,
+        personIdentifiers = personIdentifiers + other.personIdentifiers,
         organisations = organisations + other.organisations,
         affiliations = affiliations + other.affiliations,
         proposals = proposals + other.proposals,
         proposalRevisions = proposalRevisions + other.proposalRevisions,
         proposalRevisionAuthors = proposalRevisionAuthors + other.proposalRevisionAuthors,
-        stageHistory = stageHistory + other.stageHistory,
+        proposalStatuses = proposalStatuses + other.proposalStatuses,
         relatedProposals = relatedProposals + other.relatedProposals,
         comments = comments + other.comments,
     )

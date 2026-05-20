@@ -37,7 +37,6 @@ class KepMapper(
     private val commentIds: IdAllocator,
 ) {
     private val personByGHLogin = mutableMapOf<String, Int>()
-    private val personByEmail = mutableMapOf<String, Int>()
 
     /**
      * Slug → bare proposal_id, populated during [mapProposals]. Used to resolve see-also /
@@ -84,12 +83,6 @@ class KepMapper(
         )
         val comments = issueComments + prComments
 
-        CommonMapper.populateUserEmails(
-            normalizedDir = normalizedDir,
-            usersStream = "kep-users",
-            personByGHLogin = personByGHLogin,
-            personByEmail = personByEmail,
-        )
         val commitStreams = listOf(
             readJsonlObjects(normalizedDir, "kep-commits").keepLatestScrapesBy {
                 it.getJsonString("_path") + ":" + it.getJsonString("sha")
@@ -98,13 +91,8 @@ class KepMapper(
                 it.getJsonString("sha")
             }
         )
-        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateAuthorEmails(
-            commitStreams = commitStreams,
-            personByGHLogin = personByGHLogin,
-            personByEmail = personByEmail,
-            resolveGHLogin = ::resolveGHLogin,
-        )
-        val ghLoginsToNames = CommonMapper.ghLoginsToNames(
+        val commitGitAuthorByLogin = CommonMapper.loginsToGitAuthors(commitStreams)
+        val ghNameAndEmailByLogin = CommonMapper.loginsToNamesAndEmails(
             normalizedDir = normalizedDir,
             usersStream = "kep-users",
             personByGHLogin = personByGHLogin,
@@ -119,29 +107,29 @@ class KepMapper(
         )
 
         val persons = mutableListOf<Person>()
-        val personUsernames = mutableListOf<PersonUsername>()
+        val personIdentifiers = mutableListOf<PersonIdentifier>()
         val emittedPersonIds = mutableSetOf<Int>()
-        fun emitPerson(id: Int, fullName: String?) {
-            if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
+        fun emitPerson(id: Int) {
+            if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = null)
         }
 
+        // Person.full_name is left null — KEP directly uses GitHub users as identifiers for authors in proposals.
         for ((login, id) in personByGHLogin) {
-            emitPerson(id, null)
-            personUsernames += PersonUsername(
-                personId = id,
-                domain = "github.com",
-                username = login,
-                realName = ghLoginsToNames[login] ?: gitFullNameByLogin[login],
-            )
-        }
-        for ((email, id) in personByEmail) {
-            emitPerson(id, null)
-            personUsernames += PersonUsername(
-                personId = id,
-                domain = "email",
-                username = email,
-                realName = gitNameByEmail[email],
-            )
+            emitPerson(id)
+            personIdentifiers += PersonIdentifier(id, "github.com", "username", login)
+            val nameAndEmailByLogin = ghNameAndEmailByLogin[login]
+            nameAndEmailByLogin?.first?.let {
+                personIdentifiers += PersonIdentifier(id, "github.com", "display_name", it)
+            }
+            nameAndEmailByLogin?.second?.let {
+                personIdentifiers += PersonIdentifier(id, "github.com", "email", it)
+            }
+            for (gitName in commitGitAuthorByLogin.gitNamesByLogin[login].orEmpty()) {
+                personIdentifiers += PersonIdentifier(id, "git_author", "username", gitName)
+            }
+            for (gitEmail in commitGitAuthorByLogin.gitEmailsByLogin[login].orEmpty()) {
+                personIdentifiers += PersonIdentifier(id, "git_author", "email", gitEmail)
+            }
         }
 
         val rows = Rows(
@@ -154,27 +142,28 @@ class KepMapper(
                 ),
             ),
             persons = persons,
-            personUsernames = personUsernames,
+            personIdentifiers = personIdentifiers,
             organisations = organisations,
             affiliations = affiliations,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions },
-            stageHistory = proposalGroups.flatMap { it.stages },
+            proposalStatuses = proposalGroups.flatMap { it.statusRevisions },
             relatedProposals = relatedProposals,
             comments = comments,
         )
 
         log.info(
             "KEP resolver counts: proposals={}, revisions={}, related={}, dangling-related-dropped={}, " +
-                    "persons={} (GH logins={}, emails={}), organisations={}, affiliations={}, comments={}",
+                    "persons={} (GH logins={}), " +
+                    "organisations={}, affiliations={}, comments={}",
             rows.proposals.size, rows.proposalRevisions.size, rows.relatedProposals.size, danglingRelatedCount,
-            rows.persons.size, personByGHLogin.size, personByEmail.size,
+            rows.persons.size, personByGHLogin.size,
             rows.organisations.size, rows.affiliations.size, rows.comments.size,
         )
         log.info(
             "KEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
-            rows.stageHistory.map { it.rawStatus to it.normalizedStatus }.distinct(),
+            rows.proposalStatuses.map { it.rawStatus to it.normalisedStatus }.distinct(),
         )
 
         return rows
@@ -339,17 +328,17 @@ class KepMapper(
             topic = topic,
         )
 
-        // Emit a StageHistory row whenever the raw status changes between consecutive
+        // Emit a ProposalStatus row whenever the raw status changes between consecutive
         // revisions (matching the KEEP semantics).
-        val stages = folded.zip(metas)
-            .foldIndexed(mutableListOf<StageHistory>()) { idx, acc, (fc, meta) ->
+        val statusRevisions = folded.zip(metas)
+            .foldIndexed(mutableListOf<ProposalStatus>()) { idx, acc, (fc, meta) ->
                 if (meta.rawStatus != null && (acc.isEmpty() || acc.last().rawStatus != meta.rawStatus)) {
-                    acc += StageHistory(
+                    acc += ProposalStatus(
                         projectId = projectId,
                         proposalId = proposalId,
-                        stageIndex = idx,
-                        normalizedStatus = meta.normalizedStatus,
+                        statusIndex = idx,
                         rawStatus = meta.rawStatus,
+                        normalisedStatus = meta.normalizedStatus,
                         createdAt = fc.committedAt,
                     )
                 }
@@ -403,7 +392,7 @@ class KepMapper(
             proposal = proposal,
             revisions = revisions,
             authorRevisions = authorRevisions,
-            stages = stages,
+            statusRevisions = statusRevisions,
             relatedProposals = related,
         )
     }
@@ -486,13 +475,18 @@ class KepMapper(
     }
 
     /**
-     * Maps a parsed KEP status token onto one of the `StageHistory.normalized_status`
-     * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `unknown`.
+     * Maps a parsed KEP status token onto one of the `ProposalStatus.normalised_status`
+     * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `superseded`, `unknown`.
      *
      * KEP's canonical states are `provisional`, `implementable`, `implemented`, `deferred`,
      * `rejected`, `withdrawn`, `replaced` — we additionally see typos (`imlpemented`,
      * `implementeable`), the literal template string `provisional|implementable|…`, and a
      * few one-offs (`alpha`, `removed`, `superseded`).
+     *
+     * Logs a WARN with `MISSING_STATUS_MAPPING:` on any token that isn't recognized so they're
+     * easy to grep out of the run output and add cases for.
+     *
+     * TODO: when new statuses appear in the WARN log, decide which bucket they belong in and extend this match.
      */
     private fun normalizeStatus(token: String?): String {
         if (token.isNullOrBlank()) return "unknown"
@@ -511,7 +505,6 @@ class KepMapper(
             // Rejected / superseded.
             k.startsWith("rejected") -> "rejected"
             k.startsWith("replaced") -> "rejected"
-            k.startsWith("superseded") -> "rejected"
 
             // Withdrawn / deferred / removed.
             k.startsWith("withdrawn") -> "withdrawn"
@@ -527,8 +520,14 @@ class KepMapper(
             k.startsWith("proposed") -> "draft"
             k == "draft" || k.startsWith("draft ") -> "draft"
 
+            // Superseded: explicitly superseded by a newer proposal.
+            k.startsWith("superseded") -> "superseded"
+
             else -> {
-                log.warn("MISSING_STATUS_MAPPING: '{}' (raw token); mapping to 'unknown'.", token)
+                log.warn(
+                    "MISSING_STATUS_MAPPING: '{}' (raw token); mapping to 'unknown'. Add a case in normalizeStatus.",
+                    token
+                )
                 "unknown"
             }
         }
@@ -643,7 +642,7 @@ class KepMapper(
         val proposal: Proposal,
         val revisions: List<ProposalRevision>,
         val authorRevisions: List<ProposalRevisionAuthor>,
-        val stages: List<StageHistory>,
+        val statusRevisions: List<ProposalStatus>,
         val relatedProposals: List<RelatedProposal>,
     )
 

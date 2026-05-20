@@ -19,7 +19,6 @@ class KeepMapper(
 ) {
     /** Maps each GitHub `login` (assumed unique within a single contributor) to a stable person_id. */
     private val personByGHLogin = mutableMapOf<String, Int>()
-    private val personByEmail = mutableMapOf<String, Int>()
     private val personByName = mutableMapOf<String, Int>()
     private val proposalsByPerson = mutableMapOf<Int, MutableSet<String>>()
 
@@ -49,12 +48,6 @@ class KeepMapper(
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
         val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
-        CommonMapper.populateUserEmails(
-            normalizedDir = normalizedDir,
-            usersStream = "keep-users",
-            personByGHLogin = personByGHLogin,
-            personByEmail = personByEmail,
-        )
         val commitStreams = listOf(
             readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
                 it.getJsonString("_path") + ":" + it.getJsonString("sha")
@@ -63,77 +56,17 @@ class KeepMapper(
                 it.getJsonString("sha")
             }
         )
-        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper.populateAuthorEmails(
-            commitStreams = commitStreams,
-            personByGHLogin = personByGHLogin,
-            personByEmail = personByEmail,
-            resolveGHLogin = ::resolveGHLogin,
-        )
-        val ghLoginsToNames = CommonMapper.ghLoginsToNames(
+        val gitAuthorByLogin = CommonMapper.loginsToGitAuthors(commitStreams)
+        val ghNameAndEmailByLogin = CommonMapper.loginsToNamesAndEmails(
             normalizedDir = normalizedDir,
             usersStream = "keep-users",
             personByGHLogin = personByGHLogin,
         )
 
-        // === Resolve proposal-meta-text authors (currently in personByName) to GH logins or
-        // git emails, but ONLY when the same name appears as a git author/committer on a
-        // commit to that proposal's markdown — strong evidence the proposal-author actually
-        // committed to their own proposal. Direction: collapse the login/email-anchored
-        // person INTO the name-only person (which keeps the proposal-author's display name
-        // canonical and matches the IdAllocator order — name-only ids were allocated first).
-        // Runs after every other person enrichment so personByGHLogin / personByEmail are
-        // fully populated; the resulting `updatedPersonIdMap` is applied transitively below.
-        val updatedPersonIdMap = mutableMapOf<Int, Int>()
-        val claimedLogins = mutableSetOf<String>()
-        val claimedEmails = mutableSetOf<String>()
-        val loginOrEmailByProposalAuthor = buildLoginOrEmailByProposalAuthor()
-        var resolutionConflicts = 0
-
-        for ((name, nameOnlyPersonId) in personByName) {
-            val nameKey = name.replace(".", " ").lowercase()
-            val proposalIds = proposalsByPerson[nameOnlyPersonId] ?: continue
-            for (proposalId in proposalIds) {
-                val (ghLogin, gitEmail) = loginOrEmailByProposalAuthor[proposalId to nameKey] ?: continue
-                when {
-                    ghLogin != null -> {
-                        if (ghLogin in claimedLogins) {
-                            // Already linked to a different name-only person in a prior iteration.
-                            if (personByGHLogin[ghLogin] != nameOnlyPersonId) {
-                                log.warn(
-                                    "Conflict: GH login '{}' already linked to person {}; can't also link to name-only person {} ('{}', proposal {})",
-                                    ghLogin, personByGHLogin[ghLogin], nameOnlyPersonId, name, proposalId,
-                                )
-                                resolutionConflicts++
-                            }
-                            continue
-                        }
-                        claimedLogins += ghLogin
-                        val oldLoginId = personByGHLogin[ghLogin]
-                        if (oldLoginId == nameOnlyPersonId) continue
-                        personByGHLogin[ghLogin] = nameOnlyPersonId
-                        if (oldLoginId != null) updatedPersonIdMap[oldLoginId] = nameOnlyPersonId
-                    }
-
-                    gitEmail != null -> {
-                        if (gitEmail in claimedEmails) {
-                            if (personByEmail[gitEmail] != nameOnlyPersonId) {
-                                log.warn(
-                                    "Conflict: email '{}' already linked to person {}; can't also link to name-only person {} ('{}', proposal {})",
-                                    gitEmail, personByEmail[gitEmail], nameOnlyPersonId, name, proposalId,
-                                )
-                                resolutionConflicts++
-                            }
-                            continue
-                        }
-                        claimedEmails += gitEmail
-                        val oldEmailId = personByEmail[gitEmail]
-                        if (oldEmailId == nameOnlyPersonId) continue
-                        personByEmail[gitEmail] = nameOnlyPersonId
-                        if (oldEmailId != null) updatedPersonIdMap[oldEmailId] = nameOnlyPersonId
-                    }
-                }
-            }
-        }
+        val updatedPersonIdMap = mergeGHLoginsWithProposalAuthors(
+            ghNameAndEmailByLogin = ghNameAndEmailByLogin,
+            gitAuthorByLogin = gitAuthorByLogin,
+        )
 
         // Transitive closure of the substitution map. Defensive: if A→B and B→C ever co-exist
         // (shouldn't with the claim-set guards above, but cheap to compute), follow the chain.
@@ -148,17 +81,9 @@ class KeepMapper(
         val sub: (Int) -> Int = { id -> closedSub[id] ?: id }
 
         // Apply the closure to every map so later reads (mapOrgsAndAffiliations, the persons
-        // build below, and the comments substitution) all see canonical ids. In particular,
-        // emails registered to an old login id by populateUserEmails/populateCommitterAuthor-
-        // Emails get rewritten to the canonical name-only id here.
+        // build below, and the comments substitution) all see canonical ids.
         for (k in personByGHLogin.keys.toList()) personByGHLogin[k] = sub(personByGHLogin[k]!!)
-        for (k in personByEmail.keys.toList()) personByEmail[k] = sub(personByEmail[k]!!)
         for (k in personByName.keys.toList()) personByName[k] = sub(personByName[k]!!)
-
-        log.info(
-            "Proposal author resolution: {} login/email-anchored persons merged into name-only persons; {} conflicts skipped",
-            updatedPersonIdMap.size, resolutionConflicts,
-        )
 
         val (organisations, affiliations) = CommonMapper.mapOrgsAndAffiliations(
             normalizedDir = normalizedDir,
@@ -170,32 +95,34 @@ class KeepMapper(
         )
 
         val persons = mutableListOf<Person>()
-        val personUsernames = mutableListOf<PersonUsername>()
+        val personIdentifiers = mutableListOf<PersonIdentifier>()
         val emittedPersonIds = mutableSetOf<Int>()
         fun emitPerson(id: Int, fullName: String?) {
             if (emittedPersonIds.add(id)) persons += Person(personId = id, fullName = fullName)
         }
 
+        // Name-only persons (proposal-meta-text authors that never resolved to a login/email)
+        // own Person.full_name from their text-derived display name. Emitted first so the
+        // emitPerson(id, null) calls in later loops are no-ops for these ids.
         for ((name, id) in personByName) {
             emitPerson(id, name)
         }
         for ((login, id) in personByGHLogin) {
             emitPerson(id, null)
-            personUsernames += PersonUsername(
-                personId = id,
-                domain = "github.com",
-                username = login,
-                realName = ghLoginsToNames[login] ?: gitFullNameByLogin[login],
-            )
-        }
-        for ((email, id) in personByEmail) {
-            emitPerson(id, null) // fullName already supplied by the 2 loops above
-            personUsernames += PersonUsername(
-                personId = id,
-                domain = "email",
-                username = email,
-                realName = gitNameByEmail[email],
-            )
+            personIdentifiers += PersonIdentifier(id, "github.com", "username", login)
+            val ghNameAndEmail = ghNameAndEmailByLogin[login]
+            ghNameAndEmail?.first?.let {
+                personIdentifiers += PersonIdentifier(id, "github.com", "display_name", it)
+            }
+            ghNameAndEmail?.second?.let {
+                personIdentifiers += PersonIdentifier(id, "github.com", "email", it)
+            }
+            for (gitName in gitAuthorByLogin.gitNamesByLogin[login].orEmpty()) {
+                personIdentifiers += PersonIdentifier(id, "git_author", "username", gitName)
+            }
+            for (gitEmail in gitAuthorByLogin.gitEmailsByLogin[login].orEmpty()) {
+                personIdentifiers += PersonIdentifier(id, "git_author", "email", gitEmail)
+            }
         }
 
         val rows = Rows(
@@ -208,14 +135,14 @@ class KeepMapper(
                 ),
             ),
             persons = persons,
-            personUsernames = personUsernames,
+            personIdentifiers = personIdentifiers,
             organisations = organisations,
             affiliations = affiliations,
             proposals = proposals,
             proposalRevisions = proposalGroups.flatMap { it.revisions },
             proposalRevisionAuthors = proposalGroups.flatMap { it.authorRevisions }
                 .map { it.copy(authorId = sub(it.authorId)) },
-            stageHistory = proposalGroups.flatMap { it.stages },
+            proposalStatuses = proposalGroups.flatMap { it.statusRevisions },
             relatedProposals = relatedProposals,
             comments = comments.map { it.copy(authorId = sub(it.authorId)) },
         )
@@ -225,17 +152,17 @@ class KeepMapper(
             "KEEP resolver counts: proposals={}, revisions={}, " +
                     "related={}, dangling-related-dropped={}, " +
                     "comments={}, " +
-                    "persons={} (GH logins={}, emails={}, names={}), " +
+                    "persons={} (GH logins={}, names={}), " +
                     "Organisations={}, Affiliations={}",
             rows.proposals.size, rows.proposalRevisions.size,
             rows.relatedProposals.size, danglingRelatedCount,
             rows.comments.size,
-            rows.persons.size, personByGHLogin.size, personByEmail.size, personByName.size,
+            rows.persons.size, personByGHLogin.size, personByName.size,
             organisations.size, affiliations.size,
         )
         log.info(
             "KEEP status mapping: rawStatus -> normalizedStatus distinct pairs = {}",
-            rows.stageHistory.map { it.rawStatus to it.normalizedStatus }.distinct(),
+            rows.proposalStatuses.map { it.rawStatus to it.normalisedStatus }.distinct(),
         )
 
         return rows
@@ -317,15 +244,15 @@ class KeepMapper(
                 )
             }
 
-            val stages = proposalCommits.second
+            val statusRevisions = proposalCommits.second
                 .distinctUntilChangedBy { it.proposalData.rawStatus }
                 .map { proposalCommit ->
-                    StageHistory(
+                    ProposalStatus(
                         projectId = projectId,
                         proposalId = proposalId,
-                        stageIndex = proposalCommit.index,
-                        normalizedStatus = proposalCommit.proposalData.normalizedStatus,
+                        statusIndex = proposalCommit.index,
                         rawStatus = proposalCommit.proposalData.rawStatus,
+                        normalisedStatus = proposalCommit.proposalData.normalizedStatus,
                         createdAt = proposalCommit.commitedAt,
                     )
                 }
@@ -377,7 +304,7 @@ class KeepMapper(
                 proposal,
                 proposalRevisions,
                 proposalAuthorRevisions,
-                stages,
+                statusRevisions,
                 relatedProposals,
                 discussionId,
                 prId,
@@ -386,16 +313,14 @@ class KeepMapper(
     }
 
     /**
-     * Best-effort `(proposalId, lowercased name) → (ghLogin, gitEmail)` map, derived from
+     * Best-effort `proposalId -> ghLogins` map, derived from
      * `keep-commits.jsonl` (which contains commits scoped to proposal markdown files via
-     * the `_path` meta). For every commit's author/committer, we record a "this name committed to this proposal"
+     * the `_path` meta). For every commit's author, we record a "this user committed to this proposal"
      * entry — letting [mapProposals] upgrade matching proposal-meta-text authors from name-only
-     * resolution to a real GH login or at least a git author email if GitHub account is not linked.
-     *
-     * On duplicate key conflict, keeps the earlier entry.
+     * resolution to a real GH login.
      */
-    private fun buildLoginOrEmailByProposalAuthor(): Map<Pair<String, String>, Pair<String?, String?>> {
-        val result = mutableMapOf<Pair<String, String>, Pair<String?, String?>>()
+    private fun buildLoginsByProposalId(): Map<String, Set<String>> {
+        val result = mutableMapOf<String, MutableSet<String>>()
         val latestJsonlObjects = readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
             it.getJsonString("_path") + ":" + it.getJsonString("sha")
         }
@@ -403,23 +328,72 @@ class KeepMapper(
             val path = commit.getJsonString("_path")
             if (path.endsWith("TEMPLATE.md")) continue
             val proposalId = path.proposalPathToId()
-            val gitCommit = commit["commit"] as? JsonObject ?: continue
-            val gitInfo = gitCommit["author"] as? JsonObject ?: continue
             val ghLogin = (commit["author"] as? JsonObject)
                 ?.getJsonStringOrNull("login")
                 ?.takeIf { it.isNotBlank() }
-            val gitEmail = gitInfo.getJsonStringOrNull("email")
-                ?.takeIf { it.isNotBlank() }
-            if (ghLogin == null && gitEmail == null) continue
-            val gitName = gitInfo.getJsonStringOrNull("name")
-                ?.replace(".", " ")
-                ?.takeIf { it.isNotBlank() } ?: continue
-            val existingPair = result[proposalId to gitName.lowercase()]
-            if (existingPair == null) result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
-            else if (existingPair.first == null && ghLogin != null)
-                result[proposalId to gitName.lowercase()] = ghLogin to gitEmail
+                ?: continue
+            result.getOrPut(proposalId) { mutableSetOf() }.add(ghLogin)
         }
         return result
+    }
+
+    /**
+     * Resolve proposal-meta-text authors (currently in personByName) to GH logins
+     * but ONLY when the same name appears as a git author on a
+     * commit to that proposal's markdown — strong evidence the proposal-author actually
+     * committed to their own proposal.
+     *
+     * Direction: collapse the login
+     * person INTO the name-only person (which keeps the proposal-author's full name
+     * canonical and matches the IdAllocator order — name-only ids were allocated first).
+     *
+     * Runs after every other person enrichment so personByGHLogin is fully populated
+     */
+    private fun mergeGHLoginsWithProposalAuthors(
+        ghNameAndEmailByLogin: Map<String, Pair<String?, String?>>,
+        gitAuthorByLogin: GitAuthorByLogin
+    ): Map<Int, Int> {
+        val updatedPersonIdMap = mutableMapOf<Int, Int>()
+        val claimedLogins = mutableSetOf<String>()
+        val loginsByProposalId = buildLoginsByProposalId()
+        var resolutionConflicts = 0
+
+        for ((name, nameOnlyPersonId) in personByName) {
+            val nameKey = name.replace(".", " ").lowercase()
+            val proposalIds = proposalsByPerson[nameOnlyPersonId] ?: continue
+            for (proposalId in proposalIds) {
+                val logins = loginsByProposalId[proposalId] ?: continue
+                for (login in logins) {
+                    val ghName = ghNameAndEmailByLogin[login]?.first
+                    val gitNames = gitAuthorByLogin.gitNamesByLogin[login].orEmpty()
+                    val nameKeys = (setOfNotNull(ghName) + gitNames).map { it.replace(".", " ").lowercase() }.toSet()
+                    if (nameKey !in nameKeys) continue
+                    if (login in claimedLogins) {
+                        // Already linked to a different name-only person in a prior iteration.
+                        if (personByGHLogin[login] != nameOnlyPersonId) {
+                            log.warn(
+                                "Conflict: GH login '{}' already linked to person {}; can't also link to name-only person {} ('{}', proposal {})",
+                                login, personByGHLogin[login], nameOnlyPersonId, name, proposalId,
+                            )
+                            resolutionConflicts++
+                        }
+                        continue
+                    }
+                    claimedLogins += login
+                    val oldLoginId = personByGHLogin[login]
+                    if (oldLoginId == nameOnlyPersonId) continue
+                    personByGHLogin[login] = nameOnlyPersonId
+                    if (oldLoginId != null) updatedPersonIdMap[oldLoginId] = nameOnlyPersonId
+                }
+            }
+        }
+
+        log.info(
+            "Proposal author resolution: {} login persons merged into name-only persons; {} conflicts skipped",
+            updatedPersonIdMap.size, resolutionConflicts,
+        )
+
+        return updatedPersonIdMap
     }
 
     /**
@@ -459,7 +433,7 @@ class KeepMapper(
         val proposal: Proposal,
         val revisions: List<ProposalRevision>,
         val authorRevisions: List<ProposalRevisionAuthor>,
-        val stages: List<StageHistory>,
+        val statusRevisions: List<ProposalStatus>,
         val relatedProposals: List<RelatedProposal>,
         val discussionId: Int?,
         val prId: Int?,
@@ -568,16 +542,13 @@ class KeepMapper(
 
     /**
      * Maps a parsed status token (e.g. `"Stable"`, `"Implemented"`,
-     * `"Submitted"`, `"Superseded by KEEP-N"`) onto one of the `StageHistory.normalised_status`
-     * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `unknown`.
-     *
-     * Per `schema.sql`: `superseded -> rejected, null or not clear -> unknown`.
+     * `"Submitted"`, `"Superseded by KEEP-N"`) onto one of the `ProposalStatus.normalised_status`
+     * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `superseded`, `unknown`.
      *
      * Logs a WARN with `MISSING_STATUS_MAPPING:` on any token that isn't recognized so they're
      * easy to grep out of the run output and add cases for.
      *
-     * TODO: when new statuses appear in the WARN log, decide which bucket they belong in
-     * and extend this match. Some current ambiguities flagged inline.
+     * TODO: when new statuses appear in the WARN log, decide which bucket they belong in and extend this match.
      */
     private fun normalizeStatus(token: String): String {
         // Strip surrounding punctuation / markdown bold markers / backticks; some KEEPs write
@@ -600,14 +571,12 @@ class KeepMapper(
             k.startsWith("available") -> "accepted" // "Available in 2.2.20 under -X..." flag
 
             // Rejected: explicitly rejected, OR superseded by a newer proposal.
-            k.contains("superseded") || k.contains("superceded") -> "rejected" // typo seen in the wild
             k.contains("rejected") -> "rejected"
             k.contains("declined") -> "rejected"
 
             // Withdrawn: author or maintainers stopped pursuing it.
             k.contains("withdrawn") -> "withdrawn"
             k.contains("abandoned") -> "withdrawn"
-            // TODO confirm whether "Deprecated" / "Obsolete" should be `withdrawn` or `rejected` for KEEPs.
             k.contains("deprecated") -> "withdrawn"
             k.contains("obsolete") -> "withdrawn"
 
@@ -621,9 +590,6 @@ class KeepMapper(
             k.contains("review") -> "review"
             k.contains("under consideration") -> "review"
             k.contains("working on") -> "review" // "Working on the implementation"
-            // TODO confirm "Prototyped"/"Prototype available" — currently mapping to
-            // "review" since the proposal isn't done yet, but it could arguably be "accepted"
-            // if a prototype binary has shipped.
             k.contains("prototype") || k.contains("prototyped") -> "review"
 
             // Draft: filed but not yet through review.
@@ -631,6 +597,9 @@ class KeepMapper(
             k.contains("proposed") -> "draft"
             k == "draft" || k.startsWith("draft ") -> "draft"
             k == "design" || k == "design proposal" -> "draft"
+
+            // Superseded: explicitly superseded by a newer proposal.
+            k.contains("superseded") || k.contains("superceded") -> "superseded" // typo seen in the wild
 
             else -> {
                 log.warn(

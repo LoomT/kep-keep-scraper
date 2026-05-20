@@ -35,12 +35,12 @@ class DbWriter(private val outDir: Path) {
             insertProjects(conn, rows.projects)
             insertPersons(conn, rows.persons)
             insertOrganisations(conn, rows.organisations)
-            insertPersonUsernames(conn, rows.personUsernames)
+            insertPersonUsernames(conn, rows.personIdentifiers)
             insertAffiliations(conn, rows.affiliations)
             insertProposals(conn, rows.proposals)
             insertProposalRevisions(conn, rows.proposalRevisions)
             insertProposalRevisionAuthors(conn, rows.proposalRevisionAuthors)
-            insertStageHistory(conn, rows.stageHistory)
+            insertProposalStatus(conn, rows.proposalStatuses)
             insertRelatedProposals(conn, rows.relatedProposals)
             insertComments(conn, rows.comments)
 
@@ -96,16 +96,16 @@ class DbWriter(private val outDir: Path) {
             ps.setString(2, it.organisationName)
         }
 
-    private fun insertPersonUsernames(conn: Connection, items: List<PersonUsername>) =
+    private fun insertPersonUsernames(conn: Connection, items: List<PersonIdentifier>) =
         batch(
             conn,
-            "INSERT INTO PersonUsername(person_id, domain, username, real_name) VALUES (?, ?, ?, ?)",
+            "INSERT INTO PersonIdentifier(person_id, domain, identifier_type, identifier) VALUES (?, ?, ?, ?)",
             items,
         ) { ps, it ->
             ps.setInt(1, it.personId)
             ps.setString(2, it.domain)
-            ps.setString(3, it.username)
-            ps.setStringOrNull(4, it.realName)
+            ps.setString(3, it.identifierType)
+            ps.setString(4, it.identifier)
         }
 
     private fun insertAffiliations(conn: Connection, items: List<Affiliation>) =
@@ -158,18 +158,18 @@ class DbWriter(private val outDir: Path) {
             ps.setInt(4, it.authorId)
         }
 
-    private fun insertStageHistory(conn: Connection, items: List<StageHistory>) =
+    private fun insertProposalStatus(conn: Connection, items: List<ProposalStatus>) =
         batch(
             conn,
-            "INSERT INTO StageHistory(project_id, proposal_id, stage_index, normalised_status, raw_status, created_at) " +
+            "INSERT INTO ProposalStatus(project_id, proposal_id, status_index, raw_status, normalised_status, created_at) " +
                     "VALUES (?, ?, ?, ?, ?, ?)",
             items,
         ) { ps, it ->
             ps.setInt(1, it.projectId)
             ps.setString(2, it.proposalId)
-            ps.setInt(3, it.stageIndex)
-            ps.setString(4, it.normalizedStatus)
-            ps.setStringOrNull(5, it.rawStatus)
+            ps.setInt(3, it.statusIndex)
+            ps.setStringOrNull(4, it.rawStatus)
+            ps.setString(5, it.normalisedStatus)
             ps.setString(6, it.createdAt)
         }
 

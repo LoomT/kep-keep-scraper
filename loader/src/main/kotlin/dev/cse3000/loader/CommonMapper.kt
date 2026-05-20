@@ -7,14 +7,14 @@ import java.nio.file.Path
 private val log = LoggerFactory.getLogger(CommonMapper::class.java)
 
 /**
- * Most-frequent git author/committer `name` observed alongside each email, and the
- * same tally keyed by GitHub login. Produced by [CommonMapper.populateAuthorEmails];
- * fed into the persons / personUsernames row build to choose a display name when the
- * GitHub profile doesn't supply one.
+ * Per-person aggregates of git author observations. Produced by [CommonMapper.loginsToGitAuthors]:
+ *
+ * - [gitNamesByLogin] — every distinct git author `name` seen for each github login.
+ * - [gitEmailsByLogin] — every distinct git author `email` seen for each github login.
  */
-data class CommitEnrichment(
-    val gitNameByEmail: Map<String, String>,
-    val gitFullNameByLogin: Map<String, String>,
+data class GitAuthorByLogin(
+    val gitNamesByLogin: Map<String, Set<String>>,
+    val gitEmailsByLogin: Map<String, Set<String>>
 )
 
 object CommonMapper {
@@ -226,65 +226,34 @@ object CommonMapper {
     }
 
     /**
-     * Populates [personByEmail] from self-declared emails in `<usersStream>.jsonl`
-     * (one row per GitHub user). Only users whose `login` is already known
-     * (i.e. in [personByGHLogin]) are considered — this is a *post-resolution
-     * enrichment*, not an entry point for new persons. Should be called after
-     * the personByGHLogin set is finalised (proposal authors + comment authors + commit-derived logins).
-     */
-    fun populateUserEmails(
-        normalizedDir: Path,
-        usersStream: String,
-        personByGHLogin: Map<String, Int>,
-        personByEmail: MutableMap<String, Int>,
-    ) {
-        readJsonlObjects(normalizedDir, usersStream)
-            .keepLatestScrapesBy { it.getJsonString("login") }
-            .filter { it.getJsonString("login") in personByGHLogin.keys }
-            .filter { it.getJsonStringOrNull("email") != null }
-            .forEach { userJson ->
-                val login = userJson.getJsonString("login")
-                val email = userJson.getJsonString("email")
-                personByEmail[email] = personByGHLogin.getValue(login)
-            }
-    }
-
-    /**
      * Walks one or more `*-commits.jsonl` streams (e.g. `keep-commits`,
      * `keep-pr-commits` for KEEP — or `kep-commits`, `kep-pr-commits` for KEP) and,
      * where GitHub successfully resolved the git commit author email to a GitHub `login`,
-     * links the git author `name` and `email` to that login's person row.
+     * records the git author `name` and `email` for that login's person row.
      *
-     * - **Email → person**: added to [personByEmail] under the login's id, so the
-     *   build-persons loop emits a `PersonUsername(domain="email", username=<email>,
-     *   real_name=<most-popular name for this email>)` row attached to the same person
-     *   as the github.com username row. First link wins for the *email→person* mapping —
-     *   once an email is claimed by a login, a later commit with a different login on
-     *   the same email is ignored. (Names are tallied independently and the popular
-     *   pick wins regardless of which commit linked the email first.)
-     * - **Per-email name tally** and **per-login name tally**: built locally and reduced
-     *   to the most-frequent name. Multiple variants are kept so we don't lock to a
-     *   one-off typo — e.g., "Mike Smith" (50 commits) wins over "Michael Smith" (1).
+     * - **Email → person**: added to [personByGitEmail] under the login's id. First link
+     *   wins for the *email→person* mapping — once an email is claimed by a login, a
+     *   later commit with a different login on the same email is ignored (a conflict
+     *   diagnostic is logged). Each entry becomes a
+     *   `PersonIdentifier(domain="git_author", identifier_type="email", ...)` row.
+     * - **Per-person name set** — every distinct `name` seen per personId is kept
+     *   (the identifier is part of the PersonIdentifier PK, so all variants survive).
      *
-     * Commits where GitHub couldn't match the email back to a login (`author`
-     * is `null` in the JSON) are skipped.
+     * Commits where GitHub couldn't match the email back to a login (`author` is
+     * `null` in the JSON) are skipped.
      *
      * [resolveGHLogin] is invoked for every commit's GH login, so a login first observed
      * in a commit (rather than in the proposal text / comments) gets a new person id
      * here. The conflict diagnostic uses [personByGHLogin] for a reverse lookup; pass
      * the same backing map that [resolveGHLogin] mutates so it stays in sync.
      */
-    fun populateAuthorEmails(
+    fun loginsToGitAuthors(
         commitStreams: List<Sequence<JsonObject>>,
-        personByGHLogin: Map<String, Int>,
-        personByEmail: MutableMap<String, Int>,
-        resolveGHLogin: (String) -> Int,
-    ): CommitEnrichment {
-        val nameCountsByEmail = mutableMapOf<String, MutableMap<String, Int>>()
-        val nameCountsByLogin = mutableMapOf<String, MutableMap<String, Int>>()
+    ): GitAuthorByLogin {
+        val namesByLogin = mutableMapOf<String, MutableSet<String>>()
+        val emailsByLogin = mutableMapOf<String, MutableSet<String>>()
         var processed = 0
         var roleRecordsWithLogin = 0
-        var newEmailLinks = 0
         for (stream in commitStreams) {
             for (commit in stream) {
                 processed++
@@ -294,75 +263,45 @@ object CommonMapper {
                     ?.getJsonStringOrNull("login")
                     ?.takeIf { it.isNotBlank() } ?: continue
                 val gitName = gitInfo.getJsonStringOrNull("name")
-                    ?.replace(".", " ") // some names use a dot instead of space
                     ?.takeIf { it.isNotBlank() }
                 val gitEmail = gitInfo.getJsonStringOrNull("email")
                     ?.takeIf { it.isNotBlank() }?.lowercase()
 
                 roleRecordsWithLogin++
-                val personId = resolveGHLogin(ghLogin)
 
-                if (personByEmail[gitEmail] != null && personByEmail[gitEmail] != personId) {
-                    val existingPersonId = personByEmail[gitEmail]!!
-                    val existingLogin = personByGHLogin.entries.find { it.value == existingPersonId }?.key
-                    log.warn(
-                        """
-                        Duplicate email-to-login mapping for $gitEmail:
-                            - existing: $existingLogin
-                            - new: $ghLogin
-                        Skipping commit: $commit
-                        """
-                    )
-                }
-
-                if (gitEmail != null && personByEmail.putIfAbsent(gitEmail, personId) == null) {
-                    newEmailLinks++
-                }
-                if (gitEmail != null && gitName != null) {
-                    nameCountsByEmail.getOrPut(gitEmail) { mutableMapOf() }
-                        .merge(gitName, 1) { a, b -> a + b }
-                }
                 if (gitName != null) {
-                    nameCountsByLogin.getOrPut(ghLogin) { mutableMapOf() }
-                        .merge(gitName, 1) { a, b -> a + b }
+                    namesByLogin.getOrPut(ghLogin) { mutableSetOf() }.add(gitName)
+                }
+                if (gitEmail != null) {
+                    emailsByLogin.getOrPut(ghLogin) { mutableSetOf() }.add(gitEmail)
                 }
             }
         }
 
-        val gitNameByEmail: Map<String, String> = nameCountsByEmail.mapValues { (_, counts) ->
-            counts.maxByOrNull { it.value }!!.key
-        }
-        val gitFullNameByLogin: Map<String, String> = nameCountsByLogin.mapValues { (_, counts) ->
-            counts.maxByOrNull { it.value }!!.key
-        }
-
         log.info(
-            "Commit enrichment: scanned {} commits ({} author/committer records with login); " +
-                    "newly linked {} emails to GH logins; {} logins now have a git name tally",
-            processed, roleRecordsWithLogin, newEmailLinks, gitFullNameByLogin.size,
+            "Commit enrichment: scanned {} commits ({} author records with login)",
+            processed, roleRecordsWithLogin,
         )
-        return CommitEnrichment(gitNameByEmail, gitFullNameByLogin)
+        return GitAuthorByLogin(namesByLogin, emailsByLogin)
     }
 
     /**
      * Associates GitHub logins from [personByGHLogin] with their self-declared
-     * display names from `<usersStream>.jsonl`. Users with blank `name` fields are
-     * skipped (the fallback in the persons build is the most-frequent git
-     * author/committer name from [CommitEnrichment.gitFullNameByLogin]).
+     * display names and emails from `<usersStream>.jsonl`.
      */
-    fun ghLoginsToNames(
+    fun loginsToNamesAndEmails(
         normalizedDir: Path,
         usersStream: String,
         personByGHLogin: Map<String, Int>,
-    ): Map<String, String> =
+    ): Map<String, Pair<String?, String?>> =
         readJsonlObjects(normalizedDir, usersStream)
             .keepLatestScrapesBy { it.getJsonString("login") }
             .filter { it.getJsonString("login") in personByGHLogin.keys }
-            .filterNot { it.getJsonStringOrNull("name").isNullOrBlank() }
             .associate { userJson ->
                 val login = userJson.getJsonString("login")
-                val name = userJson.getJsonString("name")
-                login to name
+                val name = userJson.getJsonStringOrNull("name")
+                val email = userJson.getJsonStringOrNull("email")
+                login to (name to email)
             }
 
     /**
