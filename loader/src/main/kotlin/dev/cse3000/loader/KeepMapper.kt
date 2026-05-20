@@ -27,25 +27,49 @@ class KeepMapper(
     fun mapAll(): Rows {
         val proposalGroups = mapProposals()
         val proposals = proposalGroups.map { it.proposal }
-
-        val proposalIntIds = proposals.map { it.proposalId.toInt() }.toSet()
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
+        // Bare int → all suffixed proposalIds (one bare number may yield multiple after the
+        // collision suffixing in mapProposals). Used to translate bare-number lookups
+        // (issue#, hardcoded discussion link, supersedes-by reference) into the full set
+        // of suffixed PK values that actually exist in our Proposal table.
+        val proposalIdsByBareInt: Map<Int, Set<String>> = proposals
+            .groupBy { it.proposalId.substringBefore('-').toInt() }
+            .mapValues { (_, ps) -> ps.map { it.proposalId }.toSet() }
+
+        fun expandBareToAllSuffixed(bareOrSuffixed: String): Set<String> {
+            if ('-' in bareOrSuffixed) return setOf(bareOrSuffixed) // already specific
+            val bareInt = bareOrSuffixed.toIntOrNull() ?: return setOf(bareOrSuffixed)
+            return proposalIdsByBareInt[bareInt] ?: setOf(bareOrSuffixed)
+        }
+
         val manualDiscussionToProposalsMap = mapOf(462 to setOf("0446", "0447"), 464 to setOf("0412"))
+        val expandedManual = manualDiscussionToProposalsMap.mapValues { (_, ids) ->
+            ids.flatMap { expandBareToAllSuffixed(it) }.toSet()
+        }
 
         val discussionToProposalsMap = proposalGroups
             .mapNotNull { group -> group.discussionId?.let { it to setOf(group.proposal.proposalId) } }
             .toMap()
-            .plus(manualDiscussionToProposalsMap)
+            .plus(expandedManual)
 
-        log.info("Manually hardcoded discussion-proposals mappings: {}", manualDiscussionToProposalsMap)
+        log.info("Manually hardcoded discussion-proposals mappings (expanded): {}", expandedManual)
 
-        val prToProposalMap = proposalGroups
-            .mapNotNull { group -> group.prId?.let { it to group.proposal.proposalId } }
+        val prToProposalIds: Map<Int, Set<String>> = proposalGroups
+            .mapNotNull { group -> group.prId?.let { it to setOf(group.proposal.proposalId) } }
             .toMap()
-        val comments = mapComments(proposalIntIds, discussionToProposalsMap, prToProposalMap)
+        val comments = mapComments(proposalIdsByBareInt, discussionToProposalsMap, prToProposalIds)
 
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
+            .flatMap { r ->
+                // The per-group emitter uses bare ids for supersederId (extracted from raw
+                // status text like "Superseded by KEEP-0412"); the other side is already
+                // suffixed. Expand both sides to cover collisions, then drop self-edges.
+                val lefts = expandBareToAllSuffixed(r.proposalId)
+                val rights = expandBareToAllSuffixed(r.relatedProposalId)
+                lefts.flatMap { l -> rights.map { rr -> r.copy(proposalId = l, relatedProposalId = rr) } }
+            }
+            .filter { it.proposalId != it.relatedProposalId }
         val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
         val commitStreams = listOf(
@@ -208,6 +232,28 @@ class KeepMapper(
                 }
             }
 
+        // Resolve final proposal_ids up-front. Multiple paths can share the same bare id
+        // (data collision — e.g. KEEP-0412 is used by two distinct proposal files); each
+        // variant gets a `-0`/`-1`/... suffix so the (project_id, proposal_id) PK stays
+        // unique. The bare id remains searchable via [proposalId.substringBefore('-')].
+        val pathToFinalProposalId: Map<String, String> = run {
+            val map = mutableMapOf<String, String>()
+            for ((bareId, group) in proposalGroupedCommits.groupBy { it.first.proposalPathToId() }) {
+                if (group.size == 1) {
+                    map[group[0].first] = bareId
+                } else {
+                    log.info(
+                        "KEEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
+                        bareId, group.size, bareId, bareId, group.size - 1,
+                    )
+                    group.sortedBy { it.first }.forEachIndexed { idx, (path, _) ->
+                        map[path] = "$bareId-$idx"
+                    }
+                }
+            }
+            map
+        }
+
         return proposalGroupedCommits.map { proposalCommits ->
             val topics = proposalCommits.second.mapNotNull { it.proposalData.topic }
                 .ifEmpty {
@@ -217,7 +263,7 @@ class KeepMapper(
                     else
                         listOf("Design proposal")
                 }
-            val proposalId = proposalCommits.first.proposalPathToId()
+            val proposalId = pathToFinalProposalId.getValue(proposalCommits.first)
             assert(topics.distinct().size == 1) {
                 "Topic should not change across revisions in $proposalId, got ${topics.distinct()} (count=${topics.size})"
             }
@@ -246,6 +292,7 @@ class KeepMapper(
 
             val statusRevisions = proposalCommits.second
                 .distinctUntilChangedBy { it.proposalData.rawStatus }
+                .filter { it.proposalData.rawStatus != null }
                 .map { proposalCommit ->
                     ProposalStatus(
                         projectId = projectId,
@@ -658,9 +705,9 @@ class KeepMapper(
     }
 
     private fun mapComments(
-        proposalIntIds: Set<Int>,
+        proposalIdsByBareInt: Map<Int, Set<String>>,
         discussionToProposalsMap: Map<Int, Set<String>>,
-        prToProposalMap: Map<Int, String>
+        prToProposalIds: Map<Int, Set<String>>,
     ): List<Comment> {
         val issueComments = CommonMapper.mapIssueComments(
             normalizedDir = normalizedDir,
@@ -668,7 +715,7 @@ class KeepMapper(
             issueCommentsStream = "keep-issue-comments",
             projectId = projectId,
             commentIds = commentIds,
-            issueNumberToProposalId = { n -> if (n in proposalIntIds) n.toString().padStart(4, '0') else null },
+            issueNumberToProposalIds = { n -> proposalIdsByBareInt[n] ?: emptySet() },
             resolveGHLogin = ::resolveGHLogin,
         )
         val discussionComments = mapDiscussions(discussionToProposalsMap)
@@ -679,7 +726,7 @@ class KeepMapper(
             prReviewCommentsStream = "keep-pr-review-comments",
             projectId = projectId,
             commentIds = commentIds,
-            prToProposalMap = prToProposalMap,
+            prToProposalIds = prToProposalIds,
             resolveGHLogin = ::resolveGHLogin,
         )
         return issueComments + discussionComments + reviewThreadComments

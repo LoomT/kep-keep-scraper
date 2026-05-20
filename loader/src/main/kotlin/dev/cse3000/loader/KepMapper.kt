@@ -50,17 +50,37 @@ class KepMapper(
         val proposals = proposalGroups.map { it.proposal }
         val proposalIds = proposals.map { it.proposalId }.toSet()
 
+        // Bare int → all suffixed proposalIds. KEP proposal_ids are bare numbers like "9"
+        // or "2451"; collisions get -0/-1/... suffixes in mapProposals. The corresponding
+        // GitHub tracking issue (when present) has the bare number, so issue lookup uses
+        // the bare int and may resolve to multiple suffixed variants.
+        val proposalIdsByBareInt: Map<Int, Set<String>> = proposals
+            .mapNotNull { p ->
+                val bare = p.proposalId.substringBefore('-').toIntOrNull()
+                if (bare != null) bare to p.proposalId else null
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, ids) -> ids.toSet() }
+
+        fun expandBareToAllSuffixed(bareOrSuffixed: String): Set<String> {
+            if ('-' in bareOrSuffixed) return setOf(bareOrSuffixed) // already specific
+            val bareInt = bareOrSuffixed.toIntOrNull() ?: return setOf(bareOrSuffixed)
+            return proposalIdsByBareInt[bareInt] ?: setOf(bareOrSuffixed)
+        }
+
         val rawRelated = proposalGroups.flatMap { it.relatedProposals }
+            .flatMap { r ->
+                // canonicaliseKepRef may emit either a suffixed id (slug-resolved) or a
+                // bare number (leading-number fallback). Expand bare ids to all matching
+                // variants so collisions don't silently drop edges.
+                val lefts = expandBareToAllSuffixed(r.proposalId)
+                val rights = expandBareToAllSuffixed(r.relatedProposalId)
+                lefts.flatMap { l -> rights.map { rr -> r.copy(proposalId = l, relatedProposalId = rr) } }
+            }
+            .filter { it.proposalId != it.relatedProposalId }
         val (relatedProposals, danglingRelatedCount) = CommonMapper.processRelatedProposals(rawRelated, proposalIds)
 
-        // KEP proposal_ids are bare numbers (e.g. "9", "2451"). The corresponding GitHub
-        // tracking issue, when present, has the same number. Ids that don't parse as
-        // integers are skipped (none expected today, but cheap insurance).
-        val proposalIdByInt: Map<Int, String> = proposals
-            .mapNotNull { p -> p.proposalId.toIntOrNull()?.let { it to p.proposalId } }
-            .toMap()
-
-        val prToProposalMap = buildPrToProposalMap(proposalIdByInt)
+        val prToProposalIds = buildPrToProposalIds(proposalIdsByBareInt)
 
         val issueComments = CommonMapper.mapIssueComments(
             normalizedDir = normalizedDir,
@@ -68,7 +88,7 @@ class KepMapper(
             issueCommentsStream = "kep-issue-comments",
             projectId = projectId,
             commentIds = commentIds,
-            issueNumberToProposalId = { n -> proposalIdByInt[n] },
+            issueNumberToProposalIds = { n -> proposalIdsByBareInt[n] ?: emptySet() },
             resolveGHLogin = ::resolveGHLogin,
         )
         val prComments = CommonMapper.mapPrComments(
@@ -78,7 +98,7 @@ class KepMapper(
             prReviewCommentsStream = "kep-pr-review-comments",
             projectId = projectId,
             commentIds = commentIds,
-            prToProposalMap = prToProposalMap,
+            prToProposalIds = prToProposalIds,
             resolveGHLogin = ::resolveGHLogin,
         )
         val comments = issueComments + prComments
@@ -238,21 +258,33 @@ class KepMapper(
                 (oldRawCommits + newRawCommits).sortedBy { it.committedAt }
             }
 
-        // Pass 1: claim a proposalId per dir, building proposalIdBySlug for later ref lookup.
-        // First-come wins on number collisions; the loser is dropped here.
-        val dirToProposalId = mutableMapOf<String, String>()
-        val claimedProposalIds = mutableSetOf<String>()
+        // Pass 1: assign each dir a bare proposal_id (kep-number or leading-number-from-dir),
+        // then disambiguate collisions by appending `-0`, `-1`, ... so every variant gets a
+        // unique PK. Both the suffixed final id and the slug → final-id map are populated.
+        val barePerDir = mutableMapOf<String, String>()
         for ((dir, rawCommits) in byDir) {
             val lastCommitWithYaml = rawCommits.lastOrNull { it.yaml != null }
             val meta = lastCommitWithYaml?.yaml?.let { parseYamlMeta(it, dir, lastCommitWithYaml.commitSha) }
             val id = meta?.kepNumber ?: dir.proposalIdFromDir() ?: continue
-            if (!claimedProposalIds.add(id)) {
-                log.warn("Dropping {}: bare-number proposal_id '{}' already claimed", dir, id)
-                continue
+            barePerDir[dir] = id
+        }
+        val dirToProposalId = mutableMapOf<String, String>()
+        for ((bareId, entries) in barePerDir.entries.groupBy { it.value }) {
+            if (entries.size == 1) {
+                val dir = entries.single().key
+                dirToProposalId[dir] = bareId
+                proposalIdBySlug[extractSlug(dir.substringAfterLast('/'))] = bareId
+            } else {
+                log.info(
+                    "KEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
+                    bareId, entries.size, bareId, bareId, entries.size - 1,
+                )
+                entries.sortedBy { it.key }.forEachIndexed { idx, entry ->
+                    val finalId = "$bareId-$idx"
+                    dirToProposalId[entry.key] = finalId
+                    proposalIdBySlug[extractSlug(entry.key.substringAfterLast('/'))] = finalId
+                }
             }
-            dirToProposalId[dir] = id
-            val slug = extractSlug(dir.substringAfterLast('/'))
-            proposalIdBySlug[slug] = id
         }
 
         // Pass 2: build the ProposalGroups using the now-populated proposalIdBySlug.
@@ -537,18 +569,14 @@ class KepMapper(
         personByGHLogin.getOrPut(login) { personIds.nextId() }
 
     /**
-     * Scans `kep-pulls.jsonl` and links each PR to a proposal when the PR title references
-     * a known KEP number (e.g. "KEP-1234", "kep 2345", "KEP1234"). Only the first match per
-     * title is used; PRs whose referenced KEP isn't in our proposal set are skipped.
-     *
-     * The duplicate prevention is "first match per PR number wins" — `kep-pulls.jsonl` is
-     * pre-deduped to one row per PR via [keepLatestScrapesBy], so collisions are between
-     * different PRs pointing at the same proposal, which is fine: many-PRs → one-proposal
-     * is the expected fan-in.
+     * Scans `kep-pulls.jsonl` and links each PR to its referenced KEP via the title
+     * (e.g. "KEP-1234", "kep 2345", "KEP1234"). PRs whose title mentions multiple *distinct*
+     * KEP numbers are dropped as ambiguous; PRs whose title mentions a single number that
+     * happens to have collision-suffixed variants emit a comment chain for every variant.
      */
-    private fun buildPrToProposalMap(proposalIdByInt: Map<Int, String>): Map<Int, String> {
+    private fun buildPrToProposalIds(proposalIdsByBareInt: Map<Int, Set<String>>): Map<Int, Set<String>> {
         var titled = 0
-        val map = mutableMapOf<Int, MutableSet<String>>()
+        val bareNumbersByPr = mutableMapOf<Int, MutableSet<Int>>()
         readJsonlObjects(normalizedDir, "kep-pulls")
             .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.long }
             .forEach { pull ->
@@ -556,32 +584,45 @@ class KepMapper(
                 val matches = KEP_IN_TITLE_REGEX.findAll(title)
                 if (matches.none()) return@forEach
                 titled++
-                val kepNumbers = matches.map { it.groupValues[1].toIntOrNull() }
-                val proposalIds = kepNumbers.mapNotNull { proposalIdByInt[it] }
-                if (proposalIds.none()) return@forEach
+                val knownBares = matches
+                    .mapNotNull { it.groupValues[1].toIntOrNull() }
+                    .filter { it in proposalIdsByBareInt.keys }
+                    .toSet()
+                if (knownBares.isEmpty()) return@forEach
                 val prNumber = pull["number"]!!.jsonPrimitive.int
-                map.getOrPut(prNumber) { mutableSetOf() }.addAll(proposalIds)
+                bareNumbersByPr.getOrPut(prNumber) { mutableSetOf() }.addAll(knownBares)
             }
 
-        val (validMap, invalidMap) = map.entries.partition { it.value.size == 1 }
+        val (singleBare, multiBare) = bareNumbersByPr.entries.partition { it.value.size == 1 }
+        val validMap = singleBare.associate { entry ->
+            val bare = entry.value.single()
+            entry.key to (proposalIdsByBareInt[bare] ?: emptySet())
+        }
 
         log.info(
             "KEP PR→proposal title match: {} PRs mentioned a KEP number; " +
-                    "{} resolved to a known single proposal; {} resolved to multiple proposals (ignoring).",
-            titled, validMap.size, invalidMap.size,
+                    "{} resolved to a known proposal ({} total proposal variants, accounting for " +
+                    "duplicate-id suffixing); {} resolved to multiple distinct KEPs (ignoring).",
+            titled, validMap.size, validMap.values.sumOf { it.size }, multiBare.size,
         )
-        return validMap.associate { it.key to it.value.single() }
+        return validMap
     }
 
     /**
-     * Pulls a bare proposal_id (e.g. `"2451"`) out of a `replaces` / `superseded-by` /
-     * `see-also` reference. KEP yaml authors use these fields very loosely — values range
-     * from clean repo-relative paths to external URLs to literal `"TBD"`.
+     * Pulls a final proposal_id (e.g. `"2451"` or `"0000-1"`) out of a `replaces` /
+     * `superseded-by` / `see-also` reference. KEP yaml authors use these fields very
+     * loosely — values range from clean repo-relative paths to external URLs to literal
+     * `"TBD"`.
      *
      * Resolution order:
-     * 1. Modern path `/keps/<sig>/NNNN-<slug>` → `"NNNN"`. (null if NNNN is a template number)
-     * 2. Old-format path `/keps/<sig>/<date>-<slug>.md` or `/keps/<sig>/<slug>.md` → look up
-     *    the slug in [proposalIdBySlug] (built from the modern dir set).
+     * 1. **Slug lookup** — for any modern (`NNNN-<slug>`) or old-format (`<date>-<slug>`,
+     *    `<slug>`) path, strip the numeric prefix and look up the bare slug in
+     *    [proposalIdBySlug]. This is preferred over the leading-number form because
+     *    when two distinct proposals share a number (collision suffixing), the slug
+     *    uniquely identifies which variant the reference points at.
+     * 2. **Leading-number fallback** — when the slug doesn't match (the referenced KEP
+     *    isn't in our scrape, or the path was missing/numeric-only), return the bare
+     *    `NNNN`. Callers expand bare ids to all variants when there are duplicates.
      * 3. Otherwise null.
      */
     private fun canonicaliseKepRef(ref: String): String? {
@@ -594,14 +635,17 @@ class KepMapper(
             .removeSuffix(".md")
             .removeSuffix(".MD")
             .removeSuffix("/README")
-        // Try modern form first.
+
+        // Slug-based lookup first — picks the right variant when a bare number has multiple.
+        val slug = extractSlug(segment)
+        proposalIdBySlug[slug]?.let { return it }
+
+        // Leading-number fallback for cases where the slug isn't in our set.
         val leadingNumber = LEADING_KEP_NUMBER_REGEX.find(segment)?.groupValues?.get(1)
         if (leadingNumber != null && leadingNumber.length <= 5) {
             return if (leadingNumber !in TEMPLATE_KEP_NUMBERS) leadingNumber else null
         }
-        // Old-format fallback: slug-match against our known proposals.
-        val slug = extractSlug(segment)
-        return proposalIdBySlug[slug]
+        return null
     }
 
     private fun String.proposalIdFromDir(): String? {
