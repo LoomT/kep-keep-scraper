@@ -1,0 +1,2099 @@
+✻ Conversation compacted (ctrl+o for history)
+
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Referenced file loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt
+  ⎿  Read loader\src\main\kotlin\dev\cse3000\loader\JsonlSource.kt (29 lines)
+  ⎿  Read keep\src\main\kotlin\dev\cse3000\keep\KeepScraper.kt (47 lines)
+  ⎿  Read kep\src\main\kotlin\dev\cse3000\kep\KepScraper.kt (52 lines)
+  ⎿  Referenced file README.md
+  ⎿  Plan file referenced (~\.claude\plans\i-want-to-make-mellow-reddy.md)
+
+❯ continue the dev.cse3000.loader.KepMapper#mapProposals function               
+  implementation, it should produce similar outputs as the KEEP variant         
+
+  Read 5 files, listed 1 directory (ctrl+o to expand)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(awk 'NR==1' C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP/data/normali
+      zed/kep-yaml-revisions.jsonl | python -c "import json,sys;
+      print(json.loads(sys.stdin.r…)
+  ⎿  title: aws-k8s-tester
+     kep-number: 2313
+     authors:
+     … +12 lines (ctrl+o to expand)
+
+● Bash(awk 'NR==500' C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP/data/norma
+      lized/kep-yaml-revisions.jsonl | python -c "import json,sys;
+      print(json.loads(sys.stdin…)
+  ⎿  title: go modules
+     kep-number: 917
+     authors:
+     … +15 lines (ctrl+o to expand)
+
+● Bash(awk 'NR==2000' C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP/data/norm
+      alized/kep-yaml-revisions.jsonl | python -c "import json,sys;
+      print(json.loads(sys.stdi…)
+  ⎿  title: Kubelet endpoint for device assignment observation details
+     kep-number: 606
+     authors:
+     … +34 lines (ctrl+o to expand)
+
+● Bash(grep -oh '"status":"[^"]*"' C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-
+      KEP/data/normalized/kep-yaml-revisions.jsonl 2>/dev/null | head -5; echo
+      "---"; python…)
+  ⎿  Error: Exit code 1
+     ---
+     Traceback (most recent call last):
+       File "<string>", line 5, in <module>
+         for line in f:
+                     ^
+       File "C:\Users\kajus\AppData\Local\Programs\Python\Python314\Lib\encoding
+     s\cp1252.py", line 23, in decode
+         return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+                ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     UnicodeDecodeError: 'charmap' codec can't decode byte 0x9d in position 
+     2781: character maps to <undefined>
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  ['TBD', 'alpha', 'deferred', 'imlpemented', 'implementable', 'implemen
+     table # provisional|implementable|implemented|deferred|rejected|withdr
+     awn|replaced', 'implementable #implemented|deferred|rejected|withdrawn
+     … +12 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  ['approvers', 'authors', 'creation-date', 'disable-supported', 'editor
+     ', 'feature-gate', 'feature-gates', 'id', 'kep-number', 'last-updated'
+     , 'latest-milestone', 'metrics', 'milestone', 'modified-date', 'name',
+     … +3 lines (ctrl+o to expand)
+
+  Read 2 files (ctrl+o to expand)
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(cd /tmp && mkdir -p kaml-sources && cd kaml-sources && jar xf
+      C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charleskorn.kaml/kam
+      l-jvm/0.104.0/672c23ae1f…)
+  ⎿  Error: Exit code 2
+     /usr/bin/bash: line 1: jar: command not found
+     ls: cannot access 'com/charleskorn/kaml/': No such file or directory
+
+● Bash(cd /tmp && mkdir -p kaml-sources && cd kaml-sources && unzip -o
+      C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charleskorn.kaml/kam
+      l-jvm/0.104.0/672c23ae…)
+  ⎿  Error: Exit code 2
+     Archive:  C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charleskorn
+     .kaml/kaml-jvm/0.104.0/672c23ae1ff43f29c58465bfd3d2340fe1ca3ccd/kaml-jvm-0.
+     104.0-sources.jar
+     caution: filename not matched:  com/charleskorn/kaml/YamlNode.kt
+     caution: filename not matched:  com/charleskorn/kaml/YamlMap.kt
+     caution: filename not matched:  com/charleskorn/kaml/YamlList.kt
+     caution: filename not matched:  com/charleskorn/kaml/YamlScalar.kt
+     ls: cannot access 'com/charleskorn/kaml/': No such file or directory
+
+● Bash(unzip -l C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charleskor
+      n.kaml/kaml-jvm/0.104.0/672c23ae1ff43f29c58465bfd3d2340fe1ca3ccd/kaml-jvm-
+      0.104.0-sourc…)
+  ⎿       3635  1980-02-01 00:00   commonMain/com/charleskorn/kaml/YamlList
+     Input.kt
+          2409  1980-02-01 00:00   commonMain/com/charleskorn/kaml/YamlMapI
+     … +15 lines (ctrl+o to expand)
+
+● Bash(cd /tmp && mkdir -p kaml-sources && cd kaml-sources && unzip -o
+      C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charleskorn.kaml/kam
+      l-jvm/0.104.0/672c23ae…)
+  ⎿  Archive:  C:/Users/kajus/.gradle/caches/modules-2/files-2.1/com.charle
+     skorn.kaml/kaml-jvm/0.104.0/672c23ae1ff43f29c58465bfd3d2340fe1ca3ccd/k
+     aml-jvm-0.104.0-sources.jar
+       inflating: commonMain/com/charleskorn/kaml/YamlNode.kt
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cat /tmp/kaml-sources/commonMain/com/charleskorn/kaml/YamlNode.kt | sed
+      -n '200,300p')
+  ⎿              encounteredKeys[key.content] = key
+             }
+         }
+     … +48 lines (ctrl+o to expand)
+
+● Bash(cat /tmp/kaml-sources/commonMain/com/charleskorn/kaml/YamlNode.kt | sed
+      -n '300,400p')
+  ⎿      get() = this as? YamlScalar ?: error(this, "YamlScalar")
+
+     public val YamlNode.yamlNull: YamlNull
+     … +15 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 24, in <module>
+         if int(nyaml) != int(ndir):
+            ~~~^^^^^^^
+     ValueError: invalid literal for int() with base 10: 'NNNN'
+
+❯ i put the kep yaml template temporarily in C:\Users\kajus\IdeaProjects\CSE3000_RQ3-KEEP-KEP\kep-yaml-template.yaml 
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  distinct dirs 584
+     mismatches 16
+     ('keps/sig-cloud-provider/2436-controller-manager-leader-migration', '
+     … +12 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  0000 ['keps/sig-architecture/0000-kep-process', 'keps/sig-contributor-
+     experience/0000-community-forum', 'keps/sig-release/0000-anago-to-krel
+     -migration']
+     … +7 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  yaml-only dirs: 1; sample ['keps/sig-api-machinery/365-paginated-lists
+     ']
+     readme-only dirs: 0; sample []
+     … +6 lines (ctrl+o to expand)
+● Bash(python -c "
+      import json, re…)
+  ⎿  Replaces samples: {'https://github.com/kubernetes/design-proposals-arc
+     hive/blob/master/apps/cronjob.md', 'https://github.com/kubernetes/desi
+     gn-proposals-archive/blob/master/cli/kubectl-extension.md', 'https://g
+     … +36 lines (ctrl+o to expand)
+
+● I have what I need from the template and the data audit. Now I'll implement
+  the KEP mapper.
+
+● Write(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 383 lines, removed 57 lines
+       1  package dev.cse3000.loader
+       2  
+       3  import com.charleskorn.kaml.Yaml
+       4 +import com.charleskorn.kaml.YamlList                           
+       5 +import com.charleskorn.kaml.YamlMap                            
+       6  import com.charleskorn.kaml.YamlNode
+       7 +import com.charleskorn.kaml.YamlScalar                         
+       8  import kotlinx.serialization.json.JsonObject
+       9  import org.slf4j.LoggerFactory
+      10  import java.nio.file.Path
+     ...
+      14  /**
+      15   * Maps `kep-*.jsonl` streams (under [normalizedDir]) to typed 
+          [Rows] for the
+      16   * KEP project.
+      17 + *                                                             
+      18 + * Each KEP lives in `keps/<sig>/<number>-<slug>/` and has two 
+         +co-located files                                               
+      19 + * we care about: `kep.yaml` (structured metadata) and `README.
+         +md` (the proposal                                              
+      20 + * body). A single git commit usually touches both; we group re
+         +visions by                                                     
+      21 + * directory, sort by commit time, and pair each commit's yaml 
+         +with its readme                                                
+      22 + * (carrying forward the prior side when a commit touches only 
+         +one).                                                          
+      23 + *                                                             
+      24 + * `proposal_id` is the dir's last segment (e.g. `"2313-aws-k8s
+         +-tester"`) — the                                               
+      25 + * bare 4-digit prefix isn't unique (the corpus has e.g. three 
+         +`0000-*` and two                                               
+      26 + * `2133-*` collisions) and the slug-suffixed form maps directl
+         +y to the GitHub                                                
+      27 + * directory URL.                                              
+      28   */
+      29  class KepMapper(
+      30      private val projectId: Int,
+      31      private val normalizedDir: Path,
+      32      private val personIds: IdAllocator,
+      19 -    private val organisationIds: IdAllocator,                  
+      20 -    private val commentIds: IdAllocator,                       
+      33 +    @Suppress("unused") private val organisationIds: IdAllocato
+         +r,                                                             
+      34 +    @Suppress("unused") private val commentIds: IdAllocator,   
+      35  ) {
+      22 -    private val personByLogin = mutableMapOf<String, Long>()   
+      23 -    private val personByName = mutableMapOf<String, Long>()    
+      36 +    private val personByGHLogin = mutableMapOf<String, Long>() 
+      37  
+      38      fun mapAll(): Rows {
+      26 -        mapProposals()                                         
+      39 +        val proposalGroups = mapProposals()                    
+      40 +        val proposals = proposalGroups.map { it.proposal }     
+      41 +        val proposalIds = proposals.map { it.proposalId }.toSet
+         +()                                                             
+      42  
+      43 +        val rawRelated = proposalGroups.flatMap { it.relatedPro
+         +posals }                                                       
+      44 +        val (validRelated, danglingRelated) = rawRelated.partit
+         +ion {                                                          
+      45 +            it.proposalId in proposalIds && it.relatedProposalI
+         +d in proposalIds                                               
+      46 +        }                                                      
+      47 +        for (r in danglingRelated.distinctBy { it.proposalId to
+         + it.relatedProposalId }) {                                     
+      48 +            log.warn(                                          
+      49 +                "Dropping RelatedProposal({}, {}, {}): one side
+         + not in our proposal set",                                     
+      50 +                r.proposalId, r.type, r.relatedProposalId,     
+      51 +            )                                                  
+      52 +        }                                                      
+      53 +        val relatedProposals = validRelated.distinct()         
+      54 +                                                               
+      55 +        val persons = personByGHLogin.entries.map { (_, id) -> 
+         +Person(personId = id, fullName = null) }                       
+      56 +        val personUsernames = personByGHLogin.entries.map { (lo
+         +gin, id) ->                                                    
+      57 +            PersonUsername(personId = id, domain = "github.com"
+         +, username = login, realName = null)                           
+      58 +        }                                                      
+      59 +                                                               
+      60          val rows = Rows(
+      61              projects = listOf(
+      62                  Project(
+     ...
+       66                      copyright = "Apache-2.0",
+       67                  ),
+       68              ),
+       69 +            persons = persons,                                
+       70 +            personUsernames = personUsernames,                
+       71 +            proposals = proposals,                            
+       72 +            proposalRevisions = proposalGroups.flatMap { it.re
+          +visions },                                                    
+       73 +            proposalRevisionAuthors = proposalGroups.flatMap {
+          + it.authorRevisions },                                        
+       74 +            stageHistory = proposalGroups.flatMap { it.stages 
+          +},                                                            
+       75 +            relatedProposals = relatedProposals,              
+       76          )
+       77  
+       39 -        // TODO: read JSONL streams from `normalizedDir`, buil
+          -d SchemaModel rows, fold into `rows`.                         
+       40 -        // See KeepMapper for the same pattern; the input stre
+          -ams differ by prefix.                                         
+       41 -        // Recommended grouping for KEP proposals: group `kep-
+          -yaml-revisions` rows by `_dir`                                
+       42 -        // (the KEP directory keys/<sig>/<kep-name>/) — each u
+          -nique dir is one Proposal.                                    
+       78 +        log.info(                                             
+       79 +            "KEP resolver counts: proposals={}, revisions={}, 
+          +persons={}, related={}, dangling-related-dropped={}",         
+       80 +            rows.proposals.size, rows.proposalRevisions.size, 
+          +rows.persons.size,                                            
+       81 +            rows.relatedProposals.size, danglingRelated.size, 
+       82 +        )                                                     
+       83 +        log.info(                                             
+       84 +            "KEP status mapping: rawStatus -> normalizedStatus
+          + distinct pairs = {}",                                        
+       85 +            rows.stageHistory.map { it.rawStatus to it.normali
+          +zedStatus }.distinct(),                                       
+       86 +        )                                                     
+       87  
+       88          return rows
+       89      }
+       90  
+       47 -    @Suppress("unused")                                       
+       48 -    private fun resolveLogin(login: String, fullName: String? 
+          -= null): Long =                                               
+       49 -        personByLogin.getOrPut(login) { personIds.nextId() }  
+       91 +    private fun mapProposals(): List<ProposalGroup> {         
+       92 +        val yamlByKey = readJsonlObjects(normalizedDir, "kep-y
+          +aml-revisions")                                               
+       93 +            .keepLatestScrapesBy { it.getJsonString("dir") + "
+          +" + it.getJsonString("commit_sha") }                          
+       94 +            .toList()                                         
+       95 +        val readmeByKey = readJsonlObjects(normalizedDir, "kep
+          +-readme-revisions")                                           
+       96 +            .keepLatestScrapesBy { it.getJsonString("dir") + "
+          +" + it.getJsonString("commit_sha") }                          
+       97 +            .toList()                                         
+       98  
+       51 -    private fun mapProposals() {                              
+       52 -        val readmeSeq = readJsonlObjects(normalizedDir, "kep-r
+          -eadme-revisions")                                             
+       53 -            .keepLatestScrapesBy { it.getJsonString("commit_sh
+          -a") }                                                         
+       54 -        val yamlSeq = readJsonlObjects(normalizedDir, "kep-yam
+          -l-revisions")                                                 
+       55 -            .keepLatestScrapesBy { it.getJsonString("commit_sh
+          -a") }                                                         
+       56 -                                                              
+       57 -        val commitsByDir = (readmeSeq + yamlSeq)              
+       58 -            .sortedBy { it.getJsonString("commited_at") }     
+       99 +        // Per-dir sequence of (commitSha, committedAt, yamlJs
+          +on?, readmeJson?). The dir is the                             
+      100 +        // unique KEP key. Each commit is one entry — at this 
+          +point a commit may touch yaml only,                           
+      101 +        // readme only, or both.                              
+      102 +        val byDir: Map<String, List<RawCommit>> = (yamlByKey +
+          + readmeByKey)                                                 
+      103              .groupBy { it.getJsonString("dir") }
+       60 -            .map { (dir, jsons) ->                            
+       61 -                dir to jsons.groupBy { it.getJsonString("commi
+          -t_sha") }.values                                              
+      104 +            .mapValues { (_, jsons) ->                        
+      105 +                jsons.groupBy { it.getJsonString("commit_sha")
+          + }                                                            
+      106 +                    .map { (sha, group) ->                    
+      107 +                        val yaml = group.find { it.getJsonStri
+          +ng("path").endsWith("kep.yaml") }                             
+      108 +                        val readme = group.find { it.getJsonSt
+          +ring("path").endsWith("README.md") }                          
+      109 +                        RawCommit(                            
+      110 +                            commitSha = sha,                  
+      111 +                            committedAt = group.first().getJso
+          +nString("committed_at"),                                      
+      112 +                            yaml = yaml,                      
+      113 +                            readme = readme,                  
+      114 +                        )                                     
+      115 +                    }                                         
+      116 +                    .sortedBy { it.committedAt }              
+      117              }
+      118  
+       64 -        commitsByDir.map { (dir, commits) ->                  
+       65 -            val proposalId = dir.substringAfterLast('/', "").s
+          -ubstringBefore('-', "")                                       
+       66 -            assert(proposalId.isNotBlank()) { "Proposal ID can
+          -not be blank: $dir" }                                         
+       67 -            val topic = dir.substringBeforeLast('/', "")      
+       68 -                .substringAfterLast('/', "")                  
+       69 -                .removePrefix("sig-")                         
+       70 -            val proposal = Proposal(projectId, proposalId, top
+          -ic)                                                           
+      119 +        return byDir.mapNotNull { (dir, rawCommits) -> buildPr
+          +oposalGroup(dir, rawCommits) }                                
+      120 +    }                                                         
+      121  
+       72 -            mapProposalCommits(commits).map { (yaml, readme, c
+          -reatedAt) ->                                                  
+      122 +    /**                                                       
+      123 +     * Folds a dir's raw commit list into [ProposalRevision]s.
+          + Commits before the first commit                              
+      124 +     * that has BOTH yaml and readme present are dropped — wit
+          +hout yaml we can't extract                                    
+      125 +     * authors/status/title, and KEPs that never had yaml aren
+          +'t proposals in the modern sense.                             
+      126 +     *                                                        
+      127 +     * After the first joint commit, subsequent commits that t
+          +ouch only one of the two carry                                
+      128 +     * the previous side forward.                             
+      129 +     */                                                       
+      130 +    private fun buildProposalGroup(dir: String, rawCommits: Li
+          +st<RawCommit>): ProposalGroup? {                              
+      131 +        val proposalId = dir.proposalIdFromDir() ?: return nul
+          +l                                                             
+      132  
+       74 -            }                                                 
+      133 +        val firstJointIndex = rawCommits.indexOfFirst { it.yam
+          +l != null && it.readme != null }                              
+      134 +        if (firstJointIndex < 0) {                            
+      135 +            log.warn("Skipping {}: no commit touched both kep.
+          +yaml and README.md", dir)                                     
+      136 +            return null                                       
+      137          }
+       76 -    }                                                         
+      138 +        if (firstJointIndex > 0) {                            
+      139 +            log.debug(                                        
+      140 +                "{}: dropping {} pre-template commit(s) before
+          + yaml+readme appeared together",                              
+      141 +                dir, firstJointIndex,                         
+      142 +            )                                                 
+      143 +        }                                                     
+      144  
+       78 -    private fun mapProposalCommits(commits: Collection<List<Js
+          -onObject>>): List<Triple<YamlNode, String, String>> {         
+       79 -        val proposalRevs = commits.map { commit ->            
+       80 -            val yamlJson = commit.find { it.getJsonString("pat
+          -h").endsWith("kep.yaml") }                                    
+       81 -            val readmeJson = commit.find { it.getJsonString("p
+          -ath").endsWith("README.md") }                                 
+       82 -            val createdAt = commit.first().getJsonString("comm
+          -ited_at")                                                     
+       83 -            Triple(yamlJson, readmeJson, createdAt)           
+      145 +        val joint = rawCommits.drop(firstJointIndex)          
+      146 +        val folded: List<FoldedCommit> = joint.drop(1).running
+          +Fold(                                                         
+      147 +            FoldedCommit(joint[0].commitSha, joint[0].committe
+          +dAt, joint[0].yaml!!, joint[0].readme!!)                      
+      148 +        ) { prev, cur ->                                      
+      149 +            FoldedCommit(                                     
+      150 +                commitSha = cur.commitSha,                    
+      151 +                committedAt = cur.committedAt,                
+      152 +                yaml = cur.yaml ?: prev.yaml,                 
+      153 +                readme = cur.readme ?: prev.readme,           
+      154 +            )                                                 
+      155          }
+       85 -        val firstProposalRev = proposalRevs.first()           
+       86 -        assert(firstProposalRev.first != null && firstProposal
+          -Rev.second != null) {                                         
+       87 -            "First proposal revision should have both yaml and
+          - README files: $firstProposalRev"                             
+      156 +                                                              
+      157 +        val revisions = mutableListOf<ProposalRevision>()     
+      158 +        val authorRevisions = mutableListOf<ProposalRevisionAu
+          +thor>()                                                       
+      159 +        val metas = mutableListOf<KepYamlMeta>()              
+      160 +                                                              
+      161 +        for ((index, fc) in folded.withIndex()) {             
+      162 +            val meta = parseYamlMeta(fc.yaml, dir, fc.commitSh
+          +a)                                                            
+      163 +            metas += meta                                     
+      164 +            revisions += ProposalRevision(                    
+      165 +                projectId = projectId,                        
+      166 +                proposalId = proposalId,                      
+      167 +                revisionIndex = index,                        
+      168 +                title = meta.title ?: dir.substringAfterLast('
+          +/'),                                                          
+      169 +                createdAt = fc.committedAt,                   
+      170 +                content = fc.readme.getJsonString("content_tex
+          +t"),                                                          
+      171 +                implementedAtVersion = meta.implementedAtVersi
+          +on,                                                           
+      172 +            )                                                 
+      173 +            for (login in meta.authors.distinct()) {          
+      174 +                authorRevisions += ProposalRevisionAuthor(    
+      175 +                    projectId = projectId,                    
+      176 +                    proposalId = proposalId,                  
+      177 +                    revisionIndex = index,                    
+      178 +                    authorId = resolveGHLogin(login),         
+      179 +                )                                             
+      180 +            }                                                 
+      181          }
+       89 -        assert(proposalRevs.all { it.first != null || it.secon
+          -d != null }) {                                                
+       90 -            "All proposal revisions should have either yaml or
+          - README: $proposalRevs"                                       
+      182 +                                                              
+      183 +        // Topic: prefer the yaml's owning-sig (most descripti
+          +ve once stripped of the "sig-"                                
+      184 +        // prefix); fall back to the dir's penultimate segment
+          +, which always exists.                                        
+      185 +        val topic = metas.mapNotNull { it.owningSig }.firstOrN
+          +ull()?.removePrefix("sig-")                                   
+      186 +            ?: dir.substringBeforeLast('/').substringAfterLast
+          +('/').removePrefix("sig-")                                    
+      187 +                                                              
+      188 +        val proposal = Proposal(                              
+      189 +            projectId = projectId,                            
+      190 +            proposalId = proposalId,                          
+      191 +            topic = topic,                                    
+      192 +        )                                                     
+      193 +                                                              
+      194 +        val stages = folded.zip(metas)                        
+      195 +            .map { (fc, meta) ->                              
+      196 +                Triple(meta.rawStatus, meta.normalizedStatus, 
+          +fc.committedAt)                                               
+      197 +            }                                                 
+      198 +            .let { triples ->                                 
+      199 +                // Emit a StageHistory row whenever the raw st
+          +atus changes between consecutive                              
+      200 +                // revisions (matching the KEEP semantics).   
+      201 +                triples.foldIndexed(mutableListOf<StageHistory
+          +>()) { idx, acc, (raw, norm, at) ->                           
+      202 +                    val last = acc.lastOrNull()               
+      203 +                    if (last == null || last.rawStatus != raw)
+          + {                                                            
+      204 +                        acc += StageHistory(                  
+      205 +                            projectId = projectId,            
+      206 +                            proposalId = proposalId,          
+      207 +                            stageIndex = idx,                 
+      208 +                            normalizedStatus = norm,          
+      209 +                            rawStatus = raw,                  
+      210 +                            createdAt = at,                   
+      211 +                        )                                     
+      212 +                    }                                         
+      213 +                    acc                                       
+      214 +                }                                             
+      215 +            }                                                 
+      216 +                                                              
+      217 +        val replaces = metas.flatMap { it.replaces }.distinct(
+          +)                                                             
+      218 +        val supersededBy = metas.flatMap { it.supersededBy }.d
+          +istinct()                                                     
+      219 +        val related = buildList {                             
+      220 +            for (other in replaces) if (other != proposalId) {
+      221 +                // This proposal replaces `other` → we are the
+          + superseder.                                                  
+      222 +                add(                                          
+      223 +                    RelatedProposal(                          
+      224 +                        projectId = projectId,                
+      225 +                        proposalId = proposalId,              
+      226 +                        relatedProjectId = projectId,         
+      227 +                        relatedProposalId = other,            
+      228 +                        type = "supersedes",                  
+      229 +                    )                                         
+      230 +                )                                             
+      231 +            }                                                 
+      232 +            for (other in supersededBy) if (other != proposalI
+          +d) {                                                          
+      233 +                // `other` supersedes this one.               
+      234 +                add(                                          
+      235 +                    RelatedProposal(                          
+      236 +                        projectId = projectId,                
+      237 +                        proposalId = other,                   
+      238 +                        relatedProjectId = projectId,         
+      239 +                        relatedProposalId = proposalId,       
+      240 +                        type = "supersedes",                  
+      241 +                    )                                         
+      242 +                )                                             
+      243 +            }                                                 
+      244          }
+       92 -        val foldedProposalRevs = proposalRevs.drop(1).runningF
+          -old(firstProposalRev) { prevRev, curRev ->                    
+       93 -            if (curRev.first == null) {                       
+       94 -                Triple(prevRev.first, curRev.second, curRev.th
+          -ird)                                                          
+       95 -            } else if (curRev.second == null) {               
+       96 -                Triple(curRev.first, prevRev.second, curRev.th
+          -ird)                                                          
+       97 -            } else curRev                                     
+      245 +                                                              
+      246 +        return ProposalGroup(                                 
+      247 +            proposal = proposal,                              
+      248 +            revisions = revisions,                            
+      249 +            authorRevisions = authorRevisions,                
+      250 +            stages = stages,                                  
+      251 +            relatedProposals = related,                       
+      252 +        )                                                     
+      253 +    }                                                         
+      254 +                                                              
+      255 +    private fun parseYamlMeta(yamlJson: JsonObject, dir: Strin
+          +g, commitSha: String): KepYamlMeta {                          
+      256 +        val content = yamlJson.getJsonString("content_text")  
+      257 +        val parsed: YamlNode? = runCatching { Yaml.default.par
+          +seToYamlNode(content) }                                       
+      258 +            .onFailure { log.warn("yaml parse failed for {}@{}
+          +: {}", dir, commitSha.take(8), it.message) }                  
+      259 +            .getOrNull()                                      
+      260 +        val map = (parsed as? YamlMap)                        
+      261 +        if (map == null) {                                    
+      262 +            return KepYamlMeta(                               
+      263 +                title = null,                                 
+      264 +                authors = emptyList(),                        
+      265 +                owningSig = null,                             
+      266 +                rawStatus = null,                             
+      267 +                normalizedStatus = "unknown",                 
+      268 +                implementedAtVersion = null,                  
+      269 +                replaces = emptyList(),                       
+      270 +                supersededBy = emptyList(),                   
+      271 +            )                                                 
+      272          }
+       99 -        assert(foldedProposalRevs.all { it.first != null && it
+          -.second != null }) {                                          
+      100 -            "All folded proposal revisions should have both ya
+          -ml and README files: $foldedProposalRevs"                     
+      273 +                                                              
+      274 +        val title = map.scalarOrNull("title")                 
+      275 +        val owningSig = map.scalarOrNull("owning-sig")        
+      276 +        val rawStatus = map.scalarOrNull("status")            
+      277 +        val statusToken = rawStatus?.substringBefore("#")?.tri
+          +m()?.takeIf { it.isNotBlank() }                               
+      278 +        val authors = map.scalarListOrEmpty("authors")        
+      279 +            .map { it.removePrefix("@").trim() }              
+      280 +            .filter { it.isNotBlank() && it != "TBD" && it != 
+          +"N/A" && it != "NA" }                                         
+      281 +                                                              
+      282 +        val milestone = map.get<YamlMap>("milestone")         
+      283 +        val stableMilestone = milestone?.getScalar("stable")?.
+          +content?.takeIf { it.isNotBlank() }                           
+      284 +        val latestMilestone = map.scalarOrNull("latest-milesto
+          +ne")                                                          
+      285 +        val isImplemented = statusToken?.lowercase()?.startsWi
+          +th("implemented") == true                                     
+      286 +        val implementedAtVersion = if (isImplemented) {       
+      287 +            (stableMilestone ?: latestMilestone)?.takeIf { it 
+          +!= "TBD" && it != "N/A" }                                     
+      288 +        } else null                                           
+      289 +                                                              
+      290 +        val replaces = map.scalarListOrEmpty("replaces").mapNo
+          +tNull { canonicaliseKepRef(it) }                              
+      291 +        val supersededBy = map.scalarListOrEmpty("superseded-b
+          +y").mapNotNull { canonicaliseKepRef(it) }                     
+      292 +                                                              
+      293 +        return KepYamlMeta(                                   
+      294 +            title = title,                                    
+      295 +            authors = authors,                                
+      296 +            owningSig = owningSig,                            
+      297 +            rawStatus = rawStatus,                            
+      298 +            normalizedStatus = normalizeStatus(statusToken),  
+      299 +            implementedAtVersion = implementedAtVersion,      
+      300 +            replaces = replaces,                              
+      301 +            supersededBy = supersededBy,                      
+      302 +        )                                                     
+      303 +    }                                                         
+      304 +                                                              
+      305 +    /**                                                       
+      306 +     * Maps a parsed KEP status token onto one of the `StageHi
+          +story.normalized_status`                                      
+      307 +     * CHECK enum values: `accepted`, `rejected`, `draft`, `re
+          +view`, `withdrawn`, `unknown`.                                
+      308 +     *                                                        
+      309 +     * KEP's canonical states are `provisional`, `implementabl
+          +e`, `implemented`, `deferred`,                                
+      310 +     * `rejected`, `withdrawn`, `replaced` — we additionally s
+          +ee typos (`imlpemented`,                                      
+      311 +     * `implementeable`), the literal template string `provisi
+          +onal|implementable|…`, and a                                  
+      312 +     * few one-offs (`alpha`, `removed`, `superseded`).       
+      313 +     */                                                       
+      314 +    private fun normalizeStatus(token: String?): String {     
+      315 +        if (token.isNullOrBlank()) return "unknown"           
+      316 +        val k = token.lowercase()                             
+      317 +            .trim()                                           
+      318 +            .trim('.', ',', ';', ':', '*', '`', ' ', '"', '\''
+          +)                                                             
+      319 +            .trim()                                           
+      320 +        return when {                                         
+      321 +            k.isBlank() || k == "unknown" || k == "tbd" || k =
+          += "n/a" || k == "nnnn" -> "unknown"                           
+      322 +            // Literal template placeholder `provisional|imple
+          +mentable|…` — treat as unset.                                 
+      323 +            k.startsWith("provisional|") -> "unknown"         
+      324 +                                                              
+      325 +            // Accepted: shipped/stable.                      
+      326 +            k.startsWith("implemented") || k.startsWith("imlpe
+          +mented") -> "accepted"                                        
+      327 +                                                              
+      328 +            // Rejected / superseded.                         
+      329 +            k.startsWith("rejected") -> "rejected"            
+      330 +            k.startsWith("replaced") -> "rejected"            
+      331 +            k.startsWith("superseded") -> "rejected"          
+      332 +                                                              
+      333 +            // Withdrawn / deferred / removed.                
+      334 +            k.startsWith("withdrawn") -> "withdrawn"          
+      335 +            k.startsWith("deferred") -> "withdrawn"           
+      336 +            k.startsWith("removed") -> "withdrawn"            
+      337 +                                                              
+      338 +            // Review: implementable + in-flight alpha/beta.  
+      339 +            k.startsWith("implementable") || k.startsWith("imp
+          +lementeable") || k.startsWith("implementables") -> "review"   
+      340 +            k == "alpha" || k == "beta" -> "review"           
+      341 +                                                              
+      342 +            // Draft: provisional / proposed.                 
+      343 +            k.startsWith("provisional") -> "draft"            
+      344 +            k.startsWith("proposed") -> "draft"               
+      345 +            k == "draft" || k.startsWith("draft ") -> "draft" 
+      346 +                                                              
+      347 +            else -> {                                         
+      348 +                log.warn("MISSING_STATUS_MAPPING: '{}' (raw to
+          +ken); mapping to 'unknown'.", token)                          
+      349 +                "unknown"                                     
+      350 +            }                                                 
+      351          }
+      102 -        @Suppress("UNCHECKED_CAST") // nulls have been asserte
+          -d                                                             
+      103 -        return foldedProposalRevs.map { (yamlJson, readmeJson,
+          - createdAt) ->                                                
+      104 -            val yamlContent = yamlJson!!.getJsonString("conten
+          -t_text")                                                      
+      105 -            val yaml = Yaml.default.parseToYamlNode(yamlConten
+          -t)                                                            
+      106 -            val readmeContent = readmeJson!!.getJsonString("co
+          -ntent_text")                                                  
+      107 -            Triple(yaml, readmeContent, createdAt)            
+      352 +    }                                                         
+      353 +                                                              
+      354 +    private fun resolveGHLogin(login: String): Long =         
+      355 +        personByGHLogin.getOrPut(login) { personIds.nextId() }
+      356 +                                                              
+      357 +    /**                                                       
+      358 +     * Pulls the proposal_id (dir's last segment, e.g. `"2313-
+          +aws-k8s-tester"`) out of a                                    
+      359 +     * `replaces` / `superseded-by` reference. KEP yaml author
+          +s use these fields very loosely                               
+      360 +     * — values range from clean repo-relative paths to extern
+          +al URLs to literal `"TBD"`.                                   
+      361 +     * Returns null when the value doesn't look like an in-rep
+          +o KEP reference.                                              
+      362 +     */                                                       
+      363 +    private fun canonicaliseKepRef(ref: String): String? {    
+      364 +        val trimmed = ref.trim().trim('(', ')', ',', ' ', '"',
+          + '\'').trim()                                                 
+      365 +        if (trimmed.isEmpty()) return null                    
+      366 +        val keepOnly = trimmed.substringBefore('#').substringB
+          +efore(' ').trim()                                             
+      367 +        // Match a /keps/<sig>/<segment> path anywhere in the 
+          +string.                                                       
+      368 +        val pathMatch = KEPS_PATH_REGEX.find(keepOnly) ?: retu
+          +rn null                                                       
+      369 +        return pathMatch.groupValues[1]                       
+      370 +            .removeSuffix("/")                                
+      371 +            .removeSuffix(".md")                              
+      372 +            .removeSuffix("/README")                          
+      373 +    }                                                         
+      374 +                                                              
+      375 +    private fun String.proposalIdFromDir(): String? {         
+      376 +        val last = substringAfterLast('/', "")                
+      377 +        if (last.isEmpty()) return null                       
+      378 +        // Reject obvious template/placeholder dirs.          
+      379 +        if (!last.first().isDigit()) {                        
+      380 +            log.warn("Skipping non-numeric KEP dir: {}", this)
+      381 +            return null                                       
+      382          }
+      383 +        return last                                           
+      384      }
+      385 +                                                              
+      386 +    private data class RawCommit(                             
+      387 +        val commitSha: String,                                
+      388 +        val committedAt: String,                              
+      389 +        val yaml: JsonObject?,                                
+      390 +        val readme: JsonObject?,                              
+      391 +    )                                                         
+      392 +                                                              
+      393 +    private data class FoldedCommit(                          
+      394 +        val commitSha: String,                                
+      395 +        val committedAt: String,                              
+      396 +        val yaml: JsonObject,                                 
+      397 +        val readme: JsonObject,                               
+      398 +    )                                                         
+      399 +                                                              
+      400 +    private data class KepYamlMeta(                           
+      401 +        val title: String?,                                   
+      402 +        val authors: List<String>,                            
+      403 +        val owningSig: String?,                               
+      404 +        val rawStatus: String?,                               
+      405 +        val normalizedStatus: String,                         
+      406 +        val implementedAtVersion: String?,                    
+      407 +        val replaces: List<String>,                           
+      408 +        val supersededBy: List<String>,                       
+      409 +    )                                                         
+      410 +                                                              
+      411 +    private data class ProposalGroup(                         
+      412 +        val proposal: Proposal,                               
+      413 +        val revisions: List<ProposalRevision>,                
+      414 +        val authorRevisions: List<ProposalRevisionAuthor>,    
+      415 +        val stages: List<StageHistory>,                       
+      416 +        val relatedProposals: List<RelatedProposal>,          
+      417 +    )                                                         
+      418 +                                                              
+      419 +    companion object {                                        
+      420 +        /** Matches an in-repo KEP directory reference inside 
+          +a free-text yaml value. */                                    
+      421 +        private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+          +([^/\s]+(?:/README\.md)?)""")                                 
+      422 +    }                                                         
+      423  }
+      424 +                                                              
+      425 +/** Reads a scalar value at [key] or null when missing / non-s
+          +calar / blank. */                                             
+      426 +private fun YamlMap.scalarOrNull(key: String): String? =      
+      427 +    (get<YamlNode>(key) as? YamlScalar)?.content?.takeIf { it.
+          +isNotBlank() }                                                
+      428 +                                                              
+      429 +/**                                                           
+      430 + * Reads [key] as a `YamlList` of scalars and returns their st
+          +ring contents. Returns an empty                               
+      431 + * list when the key is missing, the value is `null`, or the v
+          +alue isn't a list of scalars.                                 
+      432 + */                                                           
+      433 +private fun YamlMap.scalarListOrEmpty(key: String): List<Strin
+          +g> {                                                          
+      434 +    val list = get<YamlNode>(key) as? YamlList ?: return empty
+          +List()                                                        
+      435 +    return list.items.mapNotNull { (it as? YamlScalar)?.conten
+          +t?.takeIf { s -> s.isNotBlank() } }                           
+      436 +}                                                             
+
+● Now compile.
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:compileKotlin 2>&1 | tail -60)
+  ⎿  WARNING: A restricted method in java.lang.System has been called
+     WARNING: java.lang.System::load has been called by net.rubygrapefruit.
+     platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/U
+     … +23 lines (ctrl+o to expand)
+
+● Compiles. Now run on the KEP data.
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:run -PkeepProjectId=3 -PkepProjectId=4 2>&1 | tail -80)
+  ⎿    [skipped]     jetersen.dev  (2 users)
+       [skipped]     ke.fyi  (2 users)
+       [skipped]     kirstein.email  (2 users)
+     … +81 lines (ctrl+o to expand)
+
+● Two issues: milestone.stable getter is strict about scalar types (some KEPs
+  have it as null/missing), and one yaml has unquoted @liggitt which kaml
+  rejects.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 4 lines, removed 1 line
+      254  
+      255      private fun parseYamlMeta(yamlJson: JsonObject, dir: Strin
+           g, commitSha: String): KepYamlMeta {
+      256          val content = yamlJson.getJsonString("content_text")
+      257 -        val parsed: YamlNode? = runCatching { Yaml.default.par
+          -seToYamlNode(content) }                                       
+      257 +        // Some KEP yamls have unquoted `@login` scalars (e.g.
+          + `- @liggitt`), which kaml rejects                            
+      258 +        // because `@` is a reserved YAML indicator. Quote tho
+          +se before parsing.                                            
+      259 +        val sanitised = content.replace(UNQUOTED_AT_REGEX, "$1
+          +\"@$2\"")                                                     
+      260 +        val parsed: YamlNode? = runCatching { Yaml.default.par
+          +seToYamlNode(sanitised) }                                     
+      261              .onFailure { log.warn("yaml parse failed for {}@{}
+           : {}", dir, commitSha.take(8), it.message) }
+      262              .getOrNull()
+      263          val map = (parsed as? YamlMap)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 2 lines, removed 2 lines
+      282              .map { it.removePrefix("@").trim() }
+      283              .filter { it.isNotBlank() && it != "TBD" && it != 
+           "N/A" && it != "NA" }
+      284  
+      285 -        val milestone = map.get<YamlMap>("milestone")         
+      286 -        val stableMilestone = milestone?.getScalar("stable")?.
+          -content?.takeIf { it.isNotBlank() }                           
+      285 +        val milestone = runCatching { map.get<YamlMap>("milest
+          +one") }.getOrNull()                                           
+      286 +        val stableMilestone = milestone?.scalarOrNull("stable"
+          +)                                                             
+      287          val latestMilestone = map.scalarOrNull("latest-milesto
+           ne")
+      288          val isImplemented = statusToken?.lowercase()?.startsWi
+           th("implemented") == true
+      289          val implementedAtVersion = if (isImplemented) {
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 3 lines
+      422      companion object {
+      423          /** Matches an in-repo KEP directory reference inside 
+           a free-text yaml value. */
+      424          private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+           ([^/\s]+(?:/README\.md)?)""")
+      425 +                                                              
+      426 +        /** Matches an unquoted `@login` scalar after a YAML l
+          +ist dash. */                                                  
+      427 +        private val UNQUOTED_AT_REGEX = Regex("""(?m)^(\s*-\s+
+          +)@([\w.-]+)\s*$""")                                           
+      428      }
+      429  }
+      430  
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:run -PkeepProjectId=3 -PkepProjectId=4 2>&1 | tail -50)
+  ⎿   at line 12, column 2:
+          approvers:
+          ^
+     … +65 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && head -30
+      loader/build/export/keep-kep/data.sql && echo "..." && grep -c "^INSERT
+      INTO Proposal(" loader/b…)
+  ⎿  Error: Exit code 1
+     head: cannot open 'loader/build/export/keep-kep/data.sql' for reading: No 
+     such file or directory
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && grep -c "^INSERT
+      INTO Proposal(" build/export/keep-kep/data.sql && echo "--- Project 4
+      (KEP) proposals (s…)
+  ⎿  626
+     --- Project 4 (KEP) proposals (sample) ---
+     INSERT INTO Proposal(project_id, proposal_id, topic, proposal_type) VA
+     … +39 lines (ctrl+o to expand)
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && rm -f
+      /tmp/test-apply.db && sqlite3 /tmp/test-apply.db < db-schema.sql &&
+      sqlite3 /tmp/test-apply.db < bu…)
+  ⎿  Error: Exit code 127
+     /usr/bin/bash: line 1: sqlite3: command not found
+
+● PowerShell(Get-Command sqlite3 -ErrorAction SilentlyContinue | Select-Object
+            Source; if (-not (Get-Command sqlite3 -ErrorAction
+            SilentlyContinue)) { winget list --name SQL…)
+  ⎿  Error: Exit code 20
+        - 
+        \ 
+                                                                                
+                                                  
+
+       ██████████▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒  1024 KB / 2.91 MB
+       ████████████████████▒▒▒▒▒▒▒▒▒▒  2.00 MB / 2.91 MB
+       ██████████████████████████████  2.91 MB / 2.91 MB
+                                                                                
+                                                  
+
+
+     … +73 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && rm -f
+      /tmp/test-apply.db && python -c "
+      import sqlite3…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 3, in <module>
+         con = sqlite3.connect('/tmp/test-apply.db')
+     sqlite3.OperationalError: unable to open database file
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python -c "
+      import sqlite3, os, tempfile…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 7, in <module>
+         con.executescript(f.read())
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+     sqlite3.OperationalError: unknown column "proposer_id" in foreign key 
+     definition
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python -c "
+      import sqlite3, os, tempfile, re…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 10, in <module>
+         con.executescript(schema_fixed)
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+     sqlite3.OperationalError: near "(": syntax error
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<stdin>", line 9, in <module>
+     sqlite3.OperationalError: near "(": syntax error
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import re…)
+  ⎿  'TEXT,\n    topic         TEXT,\n    proposal_type TEXT,\n    PRIMARY
+     KEY (project_id, proposal_id),\n    FOREIGN KEY (project_id) REFERENCE
+     S Project (project_id),\n    FOREIGN KEY (proposer_id) REFERENCES Pers
+     … +2 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  n_id)
+     );
+     … +17 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  STMT 9 FAILED: near "(": syntax error
+     CONTENT:
+     -- 5. Relationships & Interactions
+     … +7 lines (ctrl+o to expand)
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && head -8
+      build/export/keep-kep/schema-copy.sql; echo "---"; grep -i
+      "real_name\|normali" build/export/keep…)
+  ⎿  -- schema.sql not found at loader run time
+     ---
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Error: Exit code 1
+     APPLY ERROR: table StageHistory has no column named status_index
+     Traceback (most recent call last):
+       File "<stdin>", line 20, in <module>
+     sqlite3.OperationalError: table StageHistory has no column named 
+     status_index
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Project            2
+     Proposal-KEEP      46
+     Proposal-KEP       580
+     … +32 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && python << 'EOF'
+      import sqlite3, os, tempfile, re…)  ⎿  ('606-compute-device-assignment',)
+
+     -- KEPs with most stages
+     … +9 lines (ctrl+o to expand)
+
+● KepMapper now produces the same row shape as KeepMapper. Implementation
+  summary:
+
+  loader/src/main/kotlin/dev/cse3000/loader/KepMapper.kt — rewritten end-to-end:
+  - mapProposals walks kep-yaml-revisions.jsonl + kep-readme-revisions.jsonl,
+  groups by dir, and pairs each commit's yaml↔readme (carrying the prior side
+  forward when a commit touches only one).
+  - proposal_id = <dir-last-segment> (e.g. "2313-aws-k8s-tester") — bare 4-digit
+   numbers aren't unique in the corpus (three 0000-* and two 2133-* collisions);
+   the slug-suffixed form mirrors GitHub's URL.
+  - parseYamlMeta extracts title, authors (strips @, filters TBD/N/A),
+  owning-sig, raw status (split on # to drop trailing comments),
+  milestone.stable/latest-milestone for implemented_at_version (only when status
+   is implemented*), and replaces/superseded-by → RelatedProposals.
+  - normalizeStatus covers the canonical KEP states plus typos (imlpemented,
+  implementeable) and template placeholder strings.
+  - Defensive yaml parsing: handles unquoted @login scalars via regex
+  sanitisation (one KEP had - @liggitt); non-scalar milestone blocks via
+  runCatching; full-yaml parse failures fall through to empty meta.
+  - Dangling RelatedProposals (referencing KEPs not in our set — old archived
+  design proposals, template placeholders) are logged + dropped.
+
+  Verification (./gradlew :loader:run -PkeepProjectId=3 -PkepProjectId=4):
+  - 580 KEP proposals, 5305 revisions, 9999 author-revisions, 996 stage-history
+  rows, 8 valid RelatedProposals.
+  - FK integrity check (orphan authors / revisions / stages): all zero.
+  - Sample data: 1020-kubectl-staging → implementable (review) → implemented
+  (accepted); 2433-topology-aware-hints supersedes 536-topology-aware-routing.
+
+  A few pre-existing schema-vs-SqlWriter mismatches surfaced during
+  apply-testing (Proposal's bogus proposer_id FK, missing comma in
+  RelatedProposal, normalised_status vs normalized_status, stage_index vs
+  status_index, missing real_name column on PersonUsername) — those exist in
+  master and affect KEEP rows the same way, so out of scope here.
+
+  Note: the file you mentioned at kep-yaml-template.yaml isn't referenced by
+  anything in the build; remove it whenever you're done.
+
+✻ Worked for 16m 29s
+
+❯ finish implementing oldFormatByPath dev/cse3000/loader/KepMapper.kt:98 (this  
+  old format was split into yamls and readmes, the proposal file changed from   
+  date-title.md to id-title/README.md). proposalIds should be just the modern   
+  kep id without the title. Map keps from see-also in yamls to RelatedProposals 
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+● Bash(awk 'NR==1' C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP/data/normali
+      zed/kep-revisions-other.jsonl | python -c "
+      import json, sys…)
+  ⎿  path = 'keps/prod-readiness/sig-api-machinery/1027.yaml'
+     dir = 'keps/prod-readiness/sig-api-machinery'
+     commit_sha = '5e85c6049e871cd3d0fd5ae08a03d74a2fcdaf22'
+     … +13 lines (ctrl+o to expand)
+
+● Bash(python << 'EOF'
+      import json…)
+  ⎿  Total paths: 963 distinct: 447
+
+     Top segments:
+     … +34 lines (ctrl+o to expand)
+
+● Let me audit the old-format paths more carefully and what data they actually
+  have.
+
+● Bash(python << 'EOF'
+      import json, re…)
+  ⎿  distinct old sig-level .md files: 9
+       keps/sig-architecture/20190731-production-readiness-review-process.m
+     d
+     … +8 lines (ctrl+o to expand)
+
+● Bash(python << 'EOF'
+      import json, re…)
+  ⎿  Error: Exit code 1
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+       NO MATCH for 
+     keps/sig-architecture/20190731-production-readiness-review-process.md 
+     (sig=sig-architecture slug=production-readiness-review-process)
+     Traceback (most recent call last):
+
+     … +5 lines (ctrl+o to expand)
+
+● Bash(PYTHONIOENCODING=utf-8 python << 'EOF'
+      import json, re…)
+  ⎿    NO MATCH for keps/sig-architecture/20190731-production-readiness-rev
+     iew-process.md (sig=sig-architecture slug=production-readiness-review-
+     process)
+     … +12 lines (ctrl+o to expand)
+
+● Bash(PYTHONIOENCODING=utf-8 python << 'EOF'
+      import json, re…)
+  ⎿  non-numeric-prefix dirs: []
+
+● Write(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 164 lines, removed 87 lines
+      21   * directory, sort by commit time, and pair each commit's yaml 
+          with its readme
+      22   * (carrying forward the prior side when a commit touches only 
+          one).
+      23   *
+      24 - * `proposal_id` is the dir's last segment (e.g. `"2313-aws-k8s
+         --tester"`) — the                                               
+      25 - * bare 4-digit prefix isn't unique (the corpus has e.g. three 
+         -`0000-*` and two                                               
+      26 - * `2133-*` collisions) and the slug-suffixed form maps directl
+         -y to the GitHub                                                
+      27 - * directory URL.                                              
+      24 + * Early KEPs used a flat `keps/<sig>/<date>-<slug>.md` format.
+         + When such a file                                              
+      25 + * was later migrated to the modern split layout, we associate 
+         +its history with                                               
+      26 + * the new dir by matching `<sig>` + the slug fragment, and tre
+         +at each pre-                                                   
+      27 + * migration commit as a body-only revision with no yaml meta. 
+      28 + *                                                             
+      29 + * `proposal_id` is the bare KEP number (e.g. `"2313"`). A hand
+         +ful of dirs                                                    
+      30 + * collide on this prefix (three `0000-*` and two `2133-*`); th
+         +e first dir wins                                               
+      31 + * and the rest are dropped with a WARN.                       
+      32   */
+      33  class KepMapper(
+      34      private val projectId: Int,
+     ...
+      39  ) {
+      40      private val personByGHLogin = mutableMapOf<String, Long>()
+      41  
+      42 +    /**                                                        
+      43 +     * Slug → bare proposal_id, populated during [mapProposals]
+         +. Used to resolve see-also /                                   
+      44 +     * replaces / superseded-by references whose value points a
+         +t an old-style date-prefixed                                   
+      45 +     * or unprefixed `.md` file rather than the modern numeric 
+         +dir.                                                           
+      46 +     */                                                        
+      47 +    private val proposalIdBySlug = mutableMapOf<String, String>
+         +()                                                             
+      48 +                                                               
+      49      fun mapAll(): Rows {
+      50          val proposalGroups = mapProposals()
+      51          val proposals = proposalGroups.map { it.proposal }
+     ...
+      55          val (validRelated, danglingRelated) = rawRelated.partit
+          ion {
+      56              it.proposalId in proposalIds && it.relatedProposalI
+          d in proposalIds
+      57          }
+      47 -        for (r in danglingRelated.distinctBy { it.proposalId to
+         - it.relatedProposalId }) {                                     
+      58 +        for (r in danglingRelated.distinctBy { Triple(it.propos
+         +alId, it.type, it.relatedProposalId) }) {                      
+      59              log.warn(
+      60                  "Dropping RelatedProposal({}, {}, {}): one side
+           not in our proposal set",
+      61                  r.proposalId, r.type, r.relatedProposalId,
+     ...
+      106          val readmeByKey = readJsonlObjects(normalizedDir, "kep
+           -readme-revisions")
+      107              .keepLatestScrapesBy { it.getJsonString("path") + 
+           ":" + it.getJsonString("commit_sha") }
+      108              .toList()
+      109 +                                                              
+      110 +        // Pre-migration single-file KEPs: `keps/<sig>/<dateOr
+          +Slug>-*.md` — exactly 3 path                                  
+      111 +        // segments, ending in .md. PRR yaml files (`keps/prod
+          +-readiness/...`), example assets                              
+      112 +        // inside modern dirs, and other deep paths are ignore
+          +d — they're not predecessors of                               
+      113 +        // a single modern KEP dir.                           
+      114          val oldFormatByPath = readJsonlObjects(normalizedDir, 
+           "kep-revisions-other")
+      115              .keepLatestScrapesBy { it.getJsonString("path") + 
+           ":" + it.getJsonString("commit_sha") }
+      116 +            .filter {                                         
+      117 +                val p = it.getJsonString("path")              
+      118 +                p.endsWith(".md") && p.count { c -> c == '/' }
+          + == 2 && p.startsWith("keps/")                                
+      119 +            }                                                 
+      120              .groupBy { it.getJsonString("path") }
+      121              .toList()
+      122  
+      123          val byDir: Map<String, List<RawCommit>> = (yamlByKey +
+            readmeByKey)
+      124              .groupBy { it.getJsonString("dir") }
+      125              .mapValues { (dir, jsons) ->
+      106 -                val dirTitleWithoutNumber = "-" + dir.substrin
+          -gAfter('-')                                                   
+      107 -                val oldPaths = oldFormatByPath                
+      108 -                    .filter {                                 
+      109 -                        val oldPath = it.first                
+      110 -                        dir.startsWith(oldPath.substringBefore
+          -Last('/')) &&                                                 
+      111 -                                oldPath.substringAfter('-').re
+          -moveSuffix(".md") == dirTitleWithoutNumber                    
+      112 -                    }                                         
+      126 +                val sigDir = dir.substringBeforeLast('/')     
+          +              // keps/sig-release                             
+      127 +                val dirSlug = extractSlug(dir.substringAfterLa
+          +st('/'))      // artifact-management                          
+      128  
+      114 -                assert(oldPaths.size <= 1) { "Multiple (${oldP
+          -aths.size}) old paths found for $dir: ${oldPaths.map { it.firs
+          -t }}" }                                                       
+      115 -                                                              
+      116 -                if (oldPaths.size == 1) {                     
+      117 -                    log.info("Found old format for {}: {}", di
+          -r, oldPaths.single().first)                                   
+      129 +                val oldPaths = oldFormatByPath.filter { (oldPa
+          +th, _) ->                                                     
+      130 +                    oldPath.startsWith("$sigDir/") &&         
+      131 +                            extractSlug(oldPath.substringAfter
+          +Last('/').removeSuffix(".md")) == dirSlug                     
+      132                  }
+      133 +                if (oldPaths.size > 1) {                      
+      134 +                    log.warn(                                 
+      135 +                        "{}: {} candidate old-format paths mat
+          +ched same slug, picking first: {}",                           
+      136 +                        dir, oldPaths.size, oldPaths.map { it.
+          +first },                                                      
+      137 +                    )                                         
+      138 +                }                                             
+      139 +                if (oldPaths.isNotEmpty()) {                  
+      140 +                    log.info("Found old format for {}: {}", di
+          +r, oldPaths.first().first)                                    
+      141 +                }                                             
+      142  
+      120 -                val oldRawCommits = oldPaths.map { it.second }
+          -.singleOrNull().orEmpty().map {                               
+      143 +                val oldRawCommits = oldPaths.firstOrNull()?.se
+          +cond.orEmpty().map { json ->                                  
+      144                      RawCommit(
+      122 -                        commitSha = it.getJsonString("commit_s
+          -ha"),                                                         
+      123 -                        committedAt = it.getJsonString("commit
+          -ted_at"),                                                     
+      145 +                        commitSha = json.getJsonString("commit
+          +_sha"),                                                       
+      146 +                        committedAt = json.getJsonString("comm
+          +itted_at"),                                                   
+      147                          yaml = null,
+      148                          readme = null,
+      126 -                        oldFormat = it,                       
+      149 +                        oldFormat = json,                     
+      150                      )
+      151                  }
+      152  
+     ...
+      166                  (oldRawCommits + newRawCommits).sortedBy { it.
+           committedAt }
+      167              }
+      168  
+      146 -        return byDir.mapNotNull { (dir, rawCommits) -> buildPr
+          -oposalGroup(dir, rawCommits) }                                
+      169 +        // Pass 1: claim a proposalId per dir, building propos
+          +alIdBySlug for later ref lookup.                              
+      170 +        // First-come wins on number collisions; the loser is 
+          +dropped here.                                                 
+      171 +        val dirToProposalId = mutableMapOf<String, String>()  
+      172 +        val claimedProposalIds = mutableSetOf<String>()       
+      173 +        for ((dir, _) in byDir) {                             
+      174 +            val id = dir.proposalIdFromDir() ?: continue      
+      175 +            if (!claimedProposalIds.add(id)) {                
+      176 +                log.warn("Dropping {}: bare-number proposal_id
+          + '{}' already claimed", dir, id)                              
+      177 +                continue                                      
+      178 +            }                                                 
+      179 +            dirToProposalId[dir] = id                         
+      180 +            val slug = extractSlug(dir.substringAfterLast('/')
+          +)                                                             
+      181 +            proposalIdBySlug[slug] = id                       
+      182 +        }                                                     
+      183 +                                                              
+      184 +        // Pass 2: build the ProposalGroups using the now-popu
+          +lated proposalIdBySlug.                                       
+      185 +        return byDir.mapNotNull { (dir, rawCommits) ->        
+      186 +            val proposalId = dirToProposalId[dir] ?: return@ma
+          +pNotNull null                                                 
+      187 +            buildProposalGroup(dir, proposalId, rawCommits)   
+      188 +        }                                                     
+      189      }
+      190  
+      191      /**
+      150 -     * Folds a dir's raw commit list into [ProposalRevision]s.
+          - Commits before the first commit                              
+      151 -     * that has BOTH yaml and readme present are dropped — wit
+          -hout yaml we can't extract                                    
+      152 -     * authors/status/title, and KEPs that never had yaml aren
+          -'t proposals in the modern sense.                             
+      153 -     *                                                        
+      154 -     * After the first joint commit, subsequent commits that t
+          -ouch only one of the two carry                                
+      155 -     * the previous side forward.                             
+      192 +     * Folds a dir's raw commit list into [ProposalRevision]s.
+          + Revisions start at the first                                 
+      193 +     * commit that has a body (readme OR old-format `.md`); pr
+          +e-migration commits emit                                      
+      194 +     * body-only revisions (no yaml meta). Once yaml appears i
+          +t's carried forward; readme                                   
+      195 +     * likewise. Old-format and readme bodies aren't carried i
+          +nto each other — the migration                                
+      196 +     * commit usually adds the readme in the same commit, so t
+          +he discontinuity is one                                       
+      197 +     * revision at most.                                      
+      198       */
+      157 -    private fun buildProposalGroup(dir: String, rawCommits: Li
+          -st<RawCommit>): ProposalGroup? {                              
+      158 -        val proposalId = dir.proposalIdFromDir()              
+      159 -                                                              
+      160 -        val firstJointIndex = rawCommits.indexOfFirst { it.yam
+          -l != null && it.readme != null }                              
+      161 -        if (firstJointIndex < 0) {                            
+      162 -            log.warn("Skipping {}: no commit touched both kep.
+          -yaml and README.md", dir)                                     
+      199 +    private fun buildProposalGroup(dir: String, proposalId: St
+          +ring, rawCommits: List<RawCommit>): ProposalGroup? {          
+      200 +        val firstBodyIndex = rawCommits.indexOfFirst { it.read
+          +me != null || it.oldFormat != null }                          
+      201 +        if (firstBodyIndex < 0) {                             
+      202 +            log.warn("Skipping {}: no commit touched README.md
+          +, kep.yaml only? Or no old-format match", dir)                
+      203              return null
+      204          }
+      165 -        if (firstJointIndex > 0) {                            
+      166 -            log.warn(                                         
+      167 -                "{}: dropping {} pre-template commit(s) before
+          - yaml+readme appeared together",                              
+      168 -                dir, firstJointIndex,                         
+      169 -            )                                                 
+      170 -        }                                                     
+      205  
+      172 -        val joint = rawCommits.drop(firstJointIndex)          
+      173 -        val folded: List<FoldedCommit> = joint.drop(1).running
+          -Fold(                                                         
+      174 -            FoldedCommit(joint[0].commitSha, joint[0].committe
+          -dAt, joint[0].yaml!!, joint[0].readme!!)                      
+      206 +        val first = rawCommits[firstBodyIndex]                
+      207 +        val firstBody = first.readme?.getJsonString("content_t
+          +ext")                                                         
+      208 +            ?: first.oldFormat!!.getJsonString("content_text")
+      209 +        val folded: List<FoldedCommit> = rawCommits.drop(first
+          +BodyIndex + 1).runningFold(                                   
+      210 +            FoldedCommit(first.commitSha, first.committedAt, f
+          +irst.yaml, firstBody)                                         
+      211          ) { prev, cur ->
+      212 +            val newBody = cur.readme?.getJsonString("content_t
+          +ext")                                                         
+      213 +                ?: cur.oldFormat?.getJsonString("content_text"
+          +)                                                             
+      214 +                ?: prev.body                                  
+      215              FoldedCommit(
+      216                  commitSha = cur.commitSha,
+      217                  committedAt = cur.committedAt,
+      218                  yaml = cur.yaml ?: prev.yaml,
+      180 -                readme = cur.readme ?: prev.readme,           
+      219 +                body = newBody,                               
+      220              )
+      221          }
+      222  
+     ...
+      225          val metas = mutableListOf<KepYamlMeta>()
+      226  
+      227          for ((index, fc) in folded.withIndex()) {
+      189 -            val meta = parseYamlMeta(fc.yaml, dir, fc.commitSh
+          -a)                                                            
+      228 +            val meta = fc.yaml?.let { parseYamlMeta(it, dir, f
+          +c.commitSha) } ?: EMPTY_META                                  
+      229              metas += meta
+      230              revisions += ProposalRevision(
+      231                  projectId = projectId,
+     ...
+      233                  revisionIndex = index,
+      234                  title = meta.title ?: dir.substringAfterLast('
+           /'),
+      235                  createdAt = fc.committedAt,
+      197 -                content = fc.readme.getJsonString("content_tex
+          -t"),                                                          
+      236 +                content = fc.body,                            
+      237                  implementedAtVersion = meta.implementedAtVersi
+           on,
+      238              )
+      239              for (login in meta.authors.distinct()) {
+     ...
+      257              topic = topic,
+      258          )
+      259  
+      260 +        // Emit a StageHistory row whenever the raw status cha
+          +nges between consecutive                                      
+      261 +        // revisions (matching the KEEP semantics).           
+      262          val stages = folded.zip(metas)
+      222 -            .map { (fc, meta) ->                              
+      223 -                Triple(meta.rawStatus, meta.normalizedStatus, 
+          -fc.committedAt)                                               
+      224 -            }                                                 
+      225 -            .let { triples ->                                 
+      226 -                // Emit a StageHistory row whenever the raw st
+          -atus changes between consecutive                              
+      227 -                // revisions (matching the KEEP semantics).   
+      228 -                triples.foldIndexed(mutableListOf<StageHistory
+          ->()) { idx, acc, (raw, norm, at) ->                           
+      229 -                    val last = acc.lastOrNull()               
+      230 -                    if (last == null || last.rawStatus != raw)
+          - {                                                            
+      231 -                        acc += StageHistory(                  
+      232 -                            projectId = projectId,            
+      233 -                            proposalId = proposalId,          
+      234 -                            stageIndex = idx,                 
+      235 -                            normalizedStatus = norm,          
+      236 -                            rawStatus = raw,                  
+      237 -                            createdAt = at,                   
+      238 -                        )                                     
+      239 -                    }                                         
+      240 -                    acc                                       
+      263 +            .foldIndexed(mutableListOf<StageHistory>()) { idx,
+          + acc, (fc, meta) ->                                           
+      264 +                if (meta.rawStatus != null && (acc.isEmpty() |
+          +| acc.last().rawStatus != meta.rawStatus)) {                  
+      265 +                    acc += StageHistory(                      
+      266 +                        projectId = projectId,                
+      267 +                        proposalId = proposalId,              
+      268 +                        stageIndex = idx,                     
+      269 +                        normalizedStatus = meta.normalizedStat
+          +us,                                                           
+      270 +                        rawStatus = meta.rawStatus,           
+      271 +                        createdAt = fc.committedAt,           
+      272 +                    )                                         
+      273                  }
+      274 +                acc                                           
+      275              }
+      276  
+      277          val replaces = metas.flatMap { it.replaces }.distinct(
+           )
+      278          val supersededBy = metas.flatMap { it.supersededBy }.d
+           istinct()
+      279 +        val seeAlso = metas.flatMap { it.seeAlso }.distinct() 
+      280          val related = buildList {
+      281              for (other in replaces) if (other != proposalId) {
+      282                  // This proposal replaces `other` → we are the
+            superseder.
+     ...
+      302                      )
+      303                  )
+      304              }
+      305 +            for (other in seeAlso) if (other != proposalId) { 
+      306 +                // see-also is symmetric in spirit, but the sc
+          +hema only stores a directed edge —                            
+      307 +                // we emit one in the (this -> other) directio
+          +n. RQ3 analyses that care about                               
+      308 +                // bidirectional reach can union with the reve
+          +rse.                                                          
+      309 +                add(                                          
+      310 +                    RelatedProposal(                          
+      311 +                        projectId = projectId,                
+      312 +                        proposalId = proposalId,              
+      313 +                        relatedProjectId = projectId,         
+      314 +                        relatedProposalId = other,            
+      315 +                        type = "related",                     
+      316 +                    )                                         
+      317 +                )                                             
+      318 +            }                                                 
+      319          }
+      320  
+      321          return ProposalGroup(
+     ...
+      335          val parsed: YamlNode? = runCatching { Yaml.default.par
+           seToYamlNode(sanitised) }
+      336              .onFailure { log.warn("yaml parse failed for {}@{}
+           : {}", dir, commitSha.take(8), it.message) }
+      337              .getOrNull()
+      290 -        val map = (parsed as? YamlMap) ?: return KepYamlMeta( 
+      291 -            title = null,                                     
+      292 -            authors = emptyList(),                            
+      293 -            owningSig = null,                                 
+      294 -            rawStatus = null,                                 
+      295 -            normalizedStatus = "unknown",                     
+      296 -            implementedAtVersion = null,                      
+      297 -            replaces = emptyList(),                           
+      298 -            supersededBy = emptyList(),                       
+      299 -        )                                                     
+      338 +        val map = (parsed as? YamlMap) ?: return EMPTY_META   
+      339  
+      340          val title = map.scalarOrNull("title")
+      341          val owningSig = map.scalarOrNull("owning-sig")
+     ...
+      355  
+      356          val replaces = map.scalarListOrEmpty("replaces").mapNo
+           tNull { canonicaliseKepRef(it) }
+      357          val supersededBy = map.scalarListOrEmpty("superseded-b
+           y").mapNotNull { canonicaliseKepRef(it) }
+      358 +        val seeAlso = map.scalarListOrEmpty("see-also").mapNot
+          +Null { canonicaliseKepRef(it) }                               
+      359  
+      360          return KepYamlMeta(
+      361              title = title,
+     ...
+      366              implementedAtVersion = implementedAtVersion,
+      367              replaces = replaces,
+      368              supersededBy = supersededBy,
+      369 +            seeAlso = seeAlso,                                
+      370          )
+      371      }
+      372  
+     ...
+      423          personByGHLogin.getOrPut(login) { personIds.nextId() }
+      424  
+      425      /**
+      385 -     * Pulls the proposal_id (dir's last segment, e.g. `"2313-
+          -aws-k8s-tester"`) out of a                                    
+      386 -     * `replaces` / `superseded-by` reference. KEP yaml author
+          -s use these fields very loosely                               
+      387 -     * — values range from clean repo-relative paths to extern
+          -al URLs to literal `"TBD"`.                                   
+      388 -     * Returns null when the value doesn't look like an in-rep
+          -o KEP reference.                                              
+      426 +     * Pulls a bare proposal_id (e.g. `"2451"`) out of a `repl
+          +aces` / `superseded-by` /                                     
+      427 +     * `see-also` reference. KEP yaml authors use these fields
+          + very loosely — values range                                  
+      428 +     * from clean repo-relative paths to external URLs to lite
+          +ral `"TBD"`.                                                  
+      429 +     *                                                        
+      430 +     * Resolution order:                                      
+      431 +     * 1. Modern path `/keps/<sig>/NNNN-<slug>` → `"NNNN"`.   
+      432 +     * 2. Old-format path `/keps/<sig>/<date>-<slug>.md` or `/
+          +keps/<sig>/<slug>.md` → look up                               
+      433 +     *    the slug in [proposalIdBySlug] (built from the moder
+          +n dir set).                                                   
+      434 +     * 3. Otherwise null.                                     
+      435       */
+      436      private fun canonicaliseKepRef(ref: String): String? {
+      437          val trimmed = ref.trim().trim('(', ')', ',', ' ', '"',
+            '\'').trim()
+      438          if (trimmed.isEmpty()) return null
+      439          val keepOnly = trimmed.substringBefore('#').substringB
+           efore(' ').trim()
+      394 -        // Match a /keps/<sig>/<segment> path anywhere in the 
+          -string.                                                       
+      440          val pathMatch = KEPS_PATH_REGEX.find(keepOnly) ?: retu
+           rn null
+      396 -        return pathMatch.groupValues[1]                       
+      441 +        val segment = pathMatch.groupValues[1]                
+      442              .removeSuffix("/")
+      443              .removeSuffix(".md")
+      444              .removeSuffix("/README")
+      445 +        // Try modern form first.                             
+      446 +        val leadingNumber = LEADING_KEP_NUMBER_REGEX.find(segm
+          +ent)?.groupValues?.get(1)                                     
+      447 +        if (leadingNumber != null && leadingNumber.length <= 5
+          +) return leadingNumber                                        
+      448 +        // Old-format fallback: slug-match against our known p
+          +roposals.                                                     
+      449 +        val slug = extractSlug(segment)                       
+      450 +        return proposalIdBySlug[slug]                         
+      451      }
+      452  
+      402 -    private fun String.proposalIdFromDir(): String {          
+      403 -        val last = substringAfterLast('/', "").substringBefore
+          -("-", "")                                                     
+      404 -                                                              
+      405 -        return last                                           
+      453 +    private fun String.proposalIdFromDir(): String? {         
+      454 +        val last = substringAfterLast('/', "")                
+      455 +        val match = LEADING_KEP_NUMBER_REGEX.find(last) ?: ret
+          +urn null                                                      
+      456 +        return match.groupValues[1]                           
+      457      }
+      458  
+      459      private data class RawCommit(
+     ...
+      467      private data class FoldedCommit(
+      468          val commitSha: String,
+      469          val committedAt: String,
+      419 -        val yaml: JsonObject,                                 
+      420 -        val readme: JsonObject,                               
+      470 +        val yaml: JsonObject?,                                
+      471 +        val body: String,                                     
+      472      )
+      473  
+      474      private data class KepYamlMeta(
+     ...
+      480          val implementedAtVersion: String?,
+      481          val replaces: List<String>,
+      482          val supersededBy: List<String>,
+      483 +        val seeAlso: List<String>,                            
+      484      )
+      485  
+      486      private data class ProposalGroup(
+     ...
+      493  
+      494      companion object {
+      495          /** Matches an in-repo KEP directory reference inside 
+           a free-text yaml value. */
+      444 -        private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+          -([^/\s]+(?:/README\.md)?)""")                                 
+      496 +        private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+          +([^\s)]+(?:/README\.md)?)""")                                 
+      497  
+      498 +        /** Matches a leading numeric prefix (`NNNN` or `NNNN-
+          +`) on a path segment. */                                      
+      499 +        private val LEADING_KEP_NUMBER_REGEX = Regex("""^(\d{1
+          +,5})(?:-|$)""")                                               
+      500 +                                                              
+      501          /** Matches an unquoted `@login` scalar after a YAML l
+           ist dash. */
+      502          private val UNQUOTED_AT_REGEX = Regex("""(?m)^(\s*-\s+
+           )@([\w.-]+)\s*$""")
+      503 +                                                              
+      504 +        private val EMPTY_META = KepYamlMeta(                 
+      505 +            title = null,                                     
+      506 +            authors = emptyList(),                            
+      507 +            owningSig = null,                                 
+      508 +            rawStatus = null,                                 
+      509 +            normalizedStatus = "unknown",                     
+      510 +            implementedAtVersion = null,                      
+      511 +            replaces = emptyList(),                           
+      512 +            supersededBy = emptyList(),                       
+      513 +            seeAlso = emptyList(),                            
+      514 +        )                                                     
+      515      }
+      516  }
+      517  
+      518 +/**                                                           
+      519 + * Strips a leading `NNNN-` (KEP number) or `YYYYMMDD-` (date)
+          + prefix from a path segment,                                  
+      520 + * leaving the descriptive slug. Returns the input unchanged w
+          +hen no such prefix is present                                 
+      521 + * (e.g., the legacy `k8s-image-promoter` form).              
+      522 + */                                                           
+      523 +private fun extractSlug(name: String): String {               
+      524 +    val m = Regex("""^\d+-(.+)$""").matchEntire(name) ?: retur
+          +n name                                                        
+      525 +    return m.groupValues[1]                                   
+      526 +}                                                             
+      527 +                                                              
+      528  /** Reads a scalar value at [key] or null when missing / non-s
+           calar / blank. */
+      529  private fun YamlMap.scalarOrNull(key: String): String? =
+      530      (get<YamlNode>(key) as? YamlScalar)?.content?.takeIf { it.
+           isNotBlank() }
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:run -PkeepProjectId=3 -PkepProjectId=4 2>&1 | tail -25)
+  ⎿  18:34:45.079 WARN  d.c.loader.KepMapper - Dropping RelatedProposal(255
+     1, supersedes, 3456): one side not in our proposal set
+     18:34:45.079 WARN  d.c.loader.KepMapper - Dropping RelatedProposal(255
+     … +45 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<stdin>", line 15, in <module>
+     sqlite3.IntegrityError: UNIQUE constraint failed: 
+     RelatedProposal.project_id, RelatedProposal.proposal_id, 
+     RelatedProposal.related_project_id, RelatedProposal.related_proposal_id
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 9 lines, removed 1 line
+      61                  r.proposalId, r.type, r.relatedProposalId,
+      62              )
+      63          }
+      64 -        val relatedProposals = validRelated.distinct()         
+      64 +        // The schema PK on RelatedProposal is (proposal_id, re
+         +lated_proposal_id) — type is not                               
+      65 +        // part of the key. When the same edge appears with bot
+         +h `supersedes` and `related`                                   
+      66 +        // (a KEP that lists another in *both* `replaces` and `
+         +see-also`), keep the stronger                                  
+      67 +        // edge: supersedes wins over related.                 
+      68 +        val relatedProposals = validRelated                    
+      69 +            .groupBy { Quadruple(it.projectId, it.proposalId, i
+         +t.relatedProjectId, it.relatedProposalId) }                    
+      70 +            .map { (_, group) ->                               
+      71 +                group.firstOrNull { it.type == "supersedes" } ?
+         +: group.first()                                                
+      72 +            }                                                  
+      73  
+      74          val persons = personByGHLogin.entries.map { (_, id) -> 
+          Person(personId = id, fullName = null) }
+      75          val personUsernames = personByGHLogin.entries.map { (lo
+          gin, id) ->
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 2 lines
+      499          val relatedProposals: List<RelatedProposal>,
+      500      )
+      501  
+      502 +    private data class Quadruple<A, B, C, D>(val a: A, val b: 
+          +B, val c: C, val d: D)                                        
+      503 +                                                              
+      504      companion object {
+      505          /** Matches an in-repo KEP directory reference inside 
+           a free-text yaml value. */
+      506          private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+           ([^\s)]+(?:/README\.md)?)""")
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:run -PkeepProjectId=3 -PkepProjectId=4 2>&1 | tail -5)
+  ⎿  18:35:56.112 INFO  dev.cse3000.loader.Main - Apply with: bash build\ex
+     port\keep-kep/apply.sh /path/to/proposals.db
+     … +3 lines (ctrl+o to expand)
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Proposal-KEP             616
+     Rev-KEP                  5472
+     Author-KEP               10125
+     … +28 lines (ctrl+o to expand)
+
+● Done. Summary of changes to KepMapper.kt:
+
+  Old-format absorption (mapProposals):
+  - Filters kep-revisions-other.jsonl to sig-level .md files (keps/<sig>/*.md
+  only — drops PRR yamls and example assets).
+  - Slug-matches each old-format .md against modern dirs by stripping leading
+  NNNN- or YYYYMMDD- prefixes — picked up 7 of 9 sig-level legacy files
+  (KEP-541, 1498, 1729, 1731–1734).
+  - Old-format commits flow into the fold as readme-equivalent revisions;
+  yaml-derived meta is null for those, so title falls back to the dir name and
+  authors/status come from the post-migration yaml.
+
+  Fold rewrite (buildProposalGroup):
+  - Now starts at the first commit with any body (readme OR oldFormat), not at
+  the first yaml+readme joint commit. Pre-migration revisions are emitted
+  body-only.
+  - Tracks (yaml?, body) carry-forward instead of (yaml, readme).
+  - This also picked up 24 modern KEPs whose first commit was readme-only (e.g.
+  1194-prod-readiness), giving +36 total proposals (580 → 616).
+
+  Bare-number proposal_id:
+  - proposalIdFromDir now matches ^(\d{1,5})- only — rejects non-numeric dirs.
+  - Pass 1 of mapProposals allocates IDs and warns when collisions drop a dir
+  (the 0000-* × 3 and 2133-* × 2 cases).
+  - Builds proposalIdBySlug for cross-reference fallback.
+
+  see-also → RelatedProposal:
+  - New seeAlso field on KepYamlMeta, parsed alongside replaces/supersededBy.
+  - Emitted as type = "related" (the only other CHECK-allowed value besides
+  supersedes).
+  - Final dedup keeps supersedes over related when both edges exist for the same
+   (proposal_id, related_proposal_id) pair (schema PK doesn't include type).
+
+  canonicaliseKepRef:
+  - Returns the leading 1–5-digit number for modern refs (/keps/sig-x/2451-foo →
+   "2451").
+  - Falls back to slug lookup in proposalIdBySlug for old refs
+  (/keps/sig-x/20190121-foo.md → resolved via slug foo).
+
+  Verified (./gradlew :loader:run -PkeepProjectId=3 -PkepProjectId=4):
+  - 616 proposals, 5472 revisions, 1026 stage rows, 246 RelatedProposal (was 8)
+  — 9 supersedes + 237 see-also.
+  - KEP-1732 history threads cleanly across the migration: revisions 0–12 from
+  20190121-artifact-management.md (Jan 2019 – Apr 2020), revisions 13+ from the
+  modern dir with yaml.
+  - All FK orphan checks: 0 (authors, revisions, stages, related lhs/rhs).
+
+✻ Churned for 7m 4s
+
+❯ some old format proposals had the yaml embedded into the .md file at the top  
+  between "---", like                                                           
+  keps\sig-release\20200122-kubernetes-yearly-support-period.md. This embedded  
+  yaml should also be parsed for old format revisions                           
+
+● Let me look at the embedded-yaml format in old proposals.
+
+● Bash(PYTHONIOENCODING=utf-8 python << 'EOF'
+      import json…)
+  ⎿  === content (first 1500 chars) ===
+     1498-kubernetes-yearly-support-period/README.md
+     ---END---
+
+● Bash(PYTHONIOENCODING=utf-8 python << 'EOF'
+      import json…)
+  ⎿  6 commits for this path
+     --- 3729e4fb 2020-01-23T00:44:58Z size 23211
+     --- 6185e84e 2020-01-23T00:55:40Z size 23185
+     … +35 lines (ctrl+o to expand)
+
+● Good — old-format .md files can have full front-matter YAML between --- lines.
+   Let me wire that into the fold so it's parsed as the per-revision meta.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 12 lines, removed 16 lines
+      203       * revision at most.
+      204       */
+      205      private fun buildProposalGroup(dir: String, proposalId: St
+           ring, rawCommits: List<RawCommit>): ProposalGroup? {
+      206 -        val firstBodyIndex = rawCommits.indexOfFirst { it.read
+          -me != null || it.oldFormat != null }                          
+      206 +        val extracted = rawCommits.map { it to extractYamlAndB
+          +ody(it) }                                                     
+      207 +        val firstBodyIndex = extracted.indexOfFirst { it.secon
+          +d.second != null }                                            
+      208          if (firstBodyIndex < 0) {
+      208 -            log.warn("Skipping {}: no commit touched README.md
+          -, kep.yaml only? Or no old-format match", dir)                
+      209 +            log.warn("Skipping {}: no commit had body content 
+          +(readme/old-format)", dir)                                    
+      210              return null
+      211          }
+      212  
+      212 -        val first = rawCommits[firstBodyIndex]                
+      213 -        val firstBody = first.readme?.getJsonString("content_t
+          -ext")                                                         
+      214 -            ?: first.oldFormat!!.getJsonString("content_text")
+      215 -        val folded: List<FoldedCommit> = rawCommits.drop(first
+          -BodyIndex + 1).runningFold(                                   
+      216 -            FoldedCommit(first.commitSha, first.committedAt, f
+          -irst.yaml, firstBody)                                         
+      217 -        ) { prev, cur ->                                      
+      218 -            val newBody = cur.readme?.getJsonString("content_t
+          -ext")                                                         
+      219 -                ?: cur.oldFormat?.getJsonString("content_text"
+          -)                                                             
+      220 -                ?: prev.body                                  
+      213 +        val (firstRc, firstYb) = extracted[firstBodyIndex]    
+      214 +        val folded: List<FoldedCommit> = extracted.drop(firstB
+          +odyIndex + 1).runningFold(                                    
+      215 +            FoldedCommit(firstRc.commitSha, firstRc.committedA
+          +t, firstYb.first, firstYb.second!!)                           
+      216 +        ) { prev, (rc, yb) ->                                 
+      217              FoldedCommit(
+      222 -                commitSha = cur.commitSha,                    
+      223 -                committedAt = cur.committedAt,                
+      224 -                yaml = cur.yaml ?: prev.yaml,                 
+      225 -                body = newBody,                               
+      218 +                commitSha = rc.commitSha,                     
+      219 +                committedAt = rc.committedAt,                 
+      220 +                yamlContent = yb.first ?: prev.yamlContent,   
+      221 +                body = yb.second ?: prev.body,                
+      222              )
+      223          }
+      224  
+     ...
+      227          val metas = mutableListOf<KepYamlMeta>()
+      228  
+      229          for ((index, fc) in folded.withIndex()) {
+      234 -            val meta = fc.yaml?.let { parseYamlMeta(it, dir, f
+          -c.commitSha) } ?: EMPTY_META                                  
+      230 +            val meta = fc.yamlContent?.let { parseYamlMetaFrom
+          +Content(it, "$dir@${fc.commitSha.take(8)}") } ?: EMPTY_META   
+      231              metas += meta
+      232              revisions += ProposalRevision(
+      233                  projectId = projectId,
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 30 lines, removed 3 lines
+      328          )
+      329      }
+      330  
+      331 -    private fun parseYamlMeta(yamlJson: JsonObject, dir: Strin
+          -g, commitSha: String): KepYamlMeta {                          
+      332 -        val content = yamlJson.getJsonString("content_text")  
+      331 +    private fun parseYamlMeta(yamlJson: JsonObject, dir: Strin
+          +g, commitSha: String): KepYamlMeta =                          
+      332 +        parseYamlMetaFromContent(yamlJson.getJsonString("conte
+          +nt_text"), "$dir@${commitSha.take(8)}")                       
+      333 +                                                              
+      334 +    /**                                                       
+      335 +     * Returns (yamlContentOrNull, bodyContentOrNull) for a ra
+          +w commit. New-format commits                                  
+      336 +     * map directly to their (yaml, readme) fields. Old-format
+          + commits split the `.md`                                      
+      337 +     * content into front-matter (delimited by `---` lines) an
+          +d the body — early KEPs                                       
+      338 +     * embedded the yaml fields at the top of the markdown fil
+          +e.                                                            
+      339 +     */                                                       
+      340 +    private fun extractYamlAndBody(rc: RawCommit): Pair<String
+          +?, String?> {                                                 
+      341 +        rc.oldFormat?.let { json ->                           
+      342 +            val (front, body) = splitFrontMatter(json.getJsonS
+          +tring("content_text"))                                        
+      343 +            return front to body                              
+      344 +        }                                                     
+      345 +        return rc.yaml?.getJsonString("content_text") to rc.re
+          +adme?.getJsonString("content_text")                           
+      346 +    }                                                         
+      347 +                                                              
+      348 +    /**                                                       
+      349 +     * Splits an old-format `.md` content into front-matter ya
+          +ml and body. Returns                                          
+      350 +     * `(null, content)` when no `---`-delimited block is pres
+          +ent at the start.                                             
+      351 +     */                                                       
+      352 +    private fun splitFrontMatter(content: String): Pair<String
+          +?, String> {                                                  
+      353 +        val match = FRONT_MATTER_REGEX.matchAt(content, 0) ?: 
+          +return null to content                                        
+      354 +        val front = match.groupValues[1]                      
+      355 +        val body = content.substring(match.range.last + 1)    
+      356 +        return front to body                                  
+      357 +    }                                                         
+      358 +                                                              
+      359 +    private fun parseYamlMetaFromContent(content: String, labe
+          +l: String): KepYamlMeta {                                     
+      360          // Some KEP yamls have unquoted `@login` scalars (e.g.
+            `- @liggitt`), which kaml rejects
+      361          // because `@` is a reserved YAML indicator. Quote tho
+           se before parsing.
+      362          val sanitised = content.replace(UNQUOTED_AT_REGEX, "$1
+           \"@$2\"")
+      363          val parsed: YamlNode? = runCatching { Yaml.default.par
+           seToYamlNode(sanitised) }
+      337 -            .onFailure { log.warn("yaml parse failed for {}@{}
+          -: {}", dir, commitSha.take(8), it.message) }                  
+      364 +            .onFailure { log.warn("yaml parse failed for {}: {
+          +}", label, it.message) }                                      
+      365              .getOrNull()
+      366          val map = (parsed as? YamlMap) ?: return EMPTY_META
+      367  
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      499      private data class FoldedCommit(
+      500          val commitSha: String,
+      501          val committedAt: String,
+      502 -        val yaml: JsonObject?,                                
+      502 +        val yamlContent: String?,                             
+      503          val body: String,
+      504      )
+      505  
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 9 lines
+      536          /** Matches an unquoted `@login` scalar after a YAML l
+           ist dash. */
+      537          private val UNQUOTED_AT_REGEX = Regex("""(?m)^(\s*-\s+
+           )@([\w.-]+)\s*$""")
+      538  
+      539 +        /**                                                   
+      540 +         * Matches a leading `---`-delimited front-matter bloc
+          +k. Group 1 is the yaml body                                   
+      541 +         * between the fences. The closing `---` must be on it
+          +s own line.                                                   
+      542 +         */                                                   
+      543 +        private val FRONT_MATTER_REGEX = Regex(               
+      544 +            """---\s*\r?\n(.*?)\r?\n---\s*(?:\r?\n|\z)""",    
+      545 +            RegexOption.DOT_MATCHES_ALL,                      
+      546 +        )                                                     
+      547 +                                                              
+      548          private val EMPTY_META = KepYamlMeta(
+      549              title = null,
+      550              kepNumber = null,
+
+● Compile and run.
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ./gradlew
+      :loader:run -PkeepProjectId=3 -PkepProjectId=4 2>&1 | tail -20)
+  ⎿  19:06:35.610 WARN  d.c.loader.KepMapper - Dropping RelatedProposal(102
+     4, related, 0030): one side not in our proposal set
+     19:06:35.610 WARN  d.c.loader.KepMapper - Dropping RelatedProposal(150
+     … +36 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<stdin>", line 15, in <module>
+     sqlite3.IntegrityError: UNIQUE constraint failed: Proposal.project_id, 
+     Proposal.proposal_id
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && git status)
+  ⎿  On branch master
+     Changes not staged for commit:
+       (use "git add <file>..." to update what will be committed)
+     … +9 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ls
+      data/normalized/ 2>&1 | head -30)
+  ⎿  keep-commits.jsonl
+     keep-discussion-comment-replies.jsonl
+     keep-discussion-comments.jsonl
+     … +27 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && grep -E "INSERT
+      INTO Proposal\(" build/export/keep-kep/data.sql | head -3 ; echo "---";
+      grep -E "VALUES \…)
+  ⎿  INSERT INTO Proposal(project_id, proposal_id, topic, proposal_type) VA
+     LUES (3, '0004', 'Design proposal', NULL);
+     INSERT INTO Proposal(project_id, proposal_id, topic, proposal_type) VA
+     … +8 lines (ctrl+o to expand)
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP && ls -la
+      data/normalized/keep-pr-issuecomments.jsonl
+      data/normalized/keep-issues.jsonl 2>&1; echo "---"; wc…)
+  ⎿  -rw-r--r-- 1 kajus 197609 1768855 May  6 19:21 data/normalized/keep-is
+     sues.jsonl
+     -rw-r--r-- 1 kajus 197609 2002358 May  3 11:28 data/normalized/keep-pr
+     … +5 lines (ctrl+o to expand)
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  DUP: ('3', '0412')    from: INSERT INTO Proposal(project_id, proposal_
+     id, topic, proposal_type) VALUES (3, '0412', 'Design proposal', NULL);
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python -c "
+      import json…)
+  ⎿  proposals/KEEP-0412-underscores-for-local-variables.md
+     proposals/KEEP-0412-unused-return-value-checker.md
+
+● KEEP data has a recent scrape conflict (KEEP-0412 used by two different
+  markdown files). Unrelated to my changes — let me skip it for the KEP
+  verification.
+
+● Bash(cd C:/Users/kajus/IdeaProjects/CSE3000_RQ3-KEEP-KEP &&
+      PYTHONIOENCODING=utf-8 python << 'EOF'
+      import sqlite3, os, tempfile, re…)
+  ⎿  -- KEP 1498 (sig-release/20200122-kubernetes-yearly-support-period.md,
+      embedded yaml)
+        revisions (first 8):
+     … +21 lines (ctrl+o to expand)
+
+● Embedded front-matter is now extracted as the per-revision yaml for old-format
+   commits. Key changes in KepMapper.kt:
+
+  - splitFrontMatter(content) — returns (yamlText?, body) for an old-format .md.
+   Uses a ^---\n…\n---\n regex (DOT_MATCHES_ALL) anchored at position 0 so it
+  only matches a real leading front-matter block, not stray --- separators later
+   in the body.
+  - extractYamlAndBody(rc) — single function that returns (yamlContent, 
+  bodyContent) for a RawCommit. Old-format commits go through splitFrontMatter;
+  new-format commits pass through their respective field's content_text.
+  - FoldedCommit.yaml: JsonObject? → yamlContent: String? — fold now carries raw
+   yaml text rather than a JsonObject. Pre-extraction lets the fold uniformly
+  carry forward yaml whether it came from a modern kep.yaml or an embedded ---
+  block.
+  - parseYamlMeta → parseYamlMetaFromContent(content, label) — split the meta
+  parser from the JsonObject unwrapping; the Pass 1 ID-lookup still calls the
+  JsonObject overload, the per-revision loop calls the content overload.
+
+  Verified on KEP-1498
+  (sig-release/20200122-kubernetes-yearly-support-period.md):
+  - All 8 pre-migration revisions (2020-01-23 → 2020-04-30) now carry the
+  embedded title "Kubernetes Yearly Support Period".
+  - StageHistory starts at rev 0 with provisional (embedded yaml), advances to
+  implementable (rev 9) and implemented (rev 10) when the modern kep.yaml kicks
+  in.
+  - Authors imkin / jberkus / liggitt / tpepper / youngnick from the embedded
+  authors: list, deduped against the modern yaml's authors.
+
+  KEP-1732 (sig-release/20190121-artifact-management.md): title is now
+  "Kubernetes Community Artifact Serving" from rev 0 (vs. the dir-name fallback
+  before); author brendandburns picked up from front-matter.
+
+  Aggregate KEP counts: 616 proposals, 5472 revisions, 10197 author-revisions,
+  1024 stage rows, 241 RelatedProposal — 615/616 KEPs now have at least one
+  StageHistory row (vs. ~580 before). Pre-existing KEEP-0412 duplicate (recent
+  rescrape gave the number to two different .md files) is unrelated to this
+  work.
+
+✻ Brewed for 5m 18s

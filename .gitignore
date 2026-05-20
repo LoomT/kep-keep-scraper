@@ -3,7 +3,6 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
-.claude/chats
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
