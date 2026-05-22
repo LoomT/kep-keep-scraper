@@ -8,7 +8,6 @@ dependencies {
     implementation(projects.scraper)
     implementation(libs.kaml)
     implementation(libs.sqliteJdbc)
-    testImplementation(kotlin("test"))
 }
 
 application {

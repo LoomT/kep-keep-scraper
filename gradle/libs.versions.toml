@@ -3,16 +3,16 @@
 # https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
 
 [versions]
-kotlin = "2.3.20"
-kotlinxDatetime = "0.7.1"
+kotlin = "2.3.21"
+kotlinxDatetime = "0.8.0"
 kotlinxSerializationJSON = "1.11.0"
-kotlinxCoroutines = "1.10.2"
-ktor = "3.4.3"
+kotlinxCoroutines = "1.11.0"
+ktor = "3.5.0"
 kaml = "0.104.0"
-slf4j = "2.0.17"
+slf4j = "2.0.18"
 logback = "1.5.32"
 jgit = "7.6.0.202603022253-r"
-sqliteJdbc = "3.53.0.0"
+sqliteJdbc = "3.53.1.0"
 dataframe = "1.0.0-Beta5"
 kandy = "0.8.4"
 

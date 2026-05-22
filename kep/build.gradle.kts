@@ -6,7 +6,6 @@ plugins {
 
 dependencies {
     implementation(projects.scraper)
-    testImplementation(kotlin("test"))
 }
 
 application {
