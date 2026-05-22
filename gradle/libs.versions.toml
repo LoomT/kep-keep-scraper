@@ -13,6 +13,8 @@ slf4j = "2.0.17"
 logback = "1.5.32"
 jgit = "7.6.0.202603022253-r"
 sqliteJdbc = "3.53.0.0"
+dataframe = "1.0.0-Beta5"
+kandy = "0.8.4"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -34,6 +36,9 @@ logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 sqliteJdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
+
+dataframe = { module = "org.jetbrains.kotlinx:dataframe", version.ref = "dataframe" }
+kandyLetsPlot = { module = "org.jetbrains.kotlinx:kandy-lets-plot", version.ref = "kandy" }
 
 # Libraries can be bundled together for easier import
 [bundles]

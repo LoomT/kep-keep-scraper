@@ -8,3 +8,6 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+dataSources.xml
+# Kotlin Notebook configuration files
+kotlinNotebook.xml

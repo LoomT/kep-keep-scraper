@@ -48,3 +48,6 @@ bin/
 ### Scraped data ###
 data/
 .env
+
+### Other ###
+analysis/notebooks/exploration.ipynb

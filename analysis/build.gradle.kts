@@ -10,7 +10,8 @@ plugins {
 dependencies {
     implementation(projects.scraper)
     implementation(libs.sqliteJdbc)
-    testImplementation(kotlin("test"))
+    implementation(libs.dataframe)
+    implementation(libs.kandyLetsPlot)
 }
 
 application {
@@ -27,18 +28,19 @@ tasks.named<JavaExec>("run").configure {
 tasks.register("syncSharedDb") {
     group = "analysis"
     description = "Copy the shared proposals.db from -PsharedDbPath into data/shared/."
+    val sharedDbPathProp = providers.gradleProperty("sharedDbPath")
+    val sharedDbPathEnv = providers.environmentVariable("SHARED_DB_PATH")
+    val targetDir = rootProject.layout.projectDirectory.dir("data/shared").asFile.toPath()
+
     doLast {
-        val src = (project.findProperty("sharedDbPath") as? String)?.takeIf { it.isNotBlank() }
-            ?: System.getenv("SHARED_DB_PATH")?.takeIf { it.isNotBlank() }
+        val src = sharedDbPathProp.orNull?.takeIf { it.isNotBlank() }
+            ?: sharedDbPathEnv.orNull?.takeIf { it.isNotBlank() }
             ?: error(
                 "Pass -PsharedDbPath=path/to/proposals.db (or set SHARED_DB_PATH env var). " +
                         "Typically your local checkout of the sibling proposals-db repo.",
             )
         val srcPath = Paths.get(src).toAbsolutePath()
         require(Files.exists(srcPath)) { "sharedDbPath does not exist: $srcPath" }
-        // Mirror the unified <root>/data/ convention used by the scrapers: write to root/data/shared
-        // so any task whose workingDir is rootProject.projectDir can pick it up via "data/shared/proposals.db".
-        val targetDir = rootProject.projectDir.toPath().resolve("data/shared")
         Files.createDirectories(targetDir)
         val target = targetDir.resolve("proposals.db")
         Files.copy(srcPath, target, StandardCopyOption.REPLACE_EXISTING)
