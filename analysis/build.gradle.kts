@@ -16,6 +16,9 @@ dependencies {
 
 application {
     mainClass.set("dev.cse3000.analysis.MainKt")
+    // Remove the warning that currently org.xerial:sqlite-jdbc library produces.
+    // When bumping the version of that library, see if this jvm arg can be safely removed.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 // Forward -PsharedDbPath / -PrunReport flags to the JVM.

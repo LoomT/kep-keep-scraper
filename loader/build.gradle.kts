@@ -12,6 +12,9 @@ dependencies {
 
 application {
     mainClass.set("dev.cse3000.loader.MainKt")
+    // Remove the warning that currently org.xerial:sqlite-jdbc library produces.
+    // When bumping the version of that library, see if this jvm arg can be safely removed.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 // Forward selected -P<name>=<value> properties to the JVM as system properties so Main.kt can read them.
