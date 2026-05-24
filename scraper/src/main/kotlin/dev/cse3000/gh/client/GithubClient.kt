@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration
@@ -178,14 +179,24 @@ class GithubClient(
                 }
             } catch (ce: CancellationException) {
                 throw ce
-            } catch (e: java.io.IOException) {
+            } catch (e: IOException) {
                 if (attempt > maxRetries) {
-                    throw java.io.IOException("Network error on $url after $maxRetries attempts: ${e.message}", e)
+                    throw IOException("Network error on $url after $maxRetries attempts: ${e.message}", e)
                 }
                 val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
                 log.warn(
                     "Network error on {}: {}: {} — backing off {} (attempt {}/{})",
                     url, e::class.simpleName, e.message, backoff, attempt, maxRetries,
+                )
+                delay(backoff)
+                attempt++
+            } catch (e: IllegalStateException) {
+                if (e.message?.contains("404 Not Found") == true) throw e
+                if (attempt > maxRetries) throw e
+                val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
+                log.warn(
+                    "HTTP body error on {}: {} — backing off {} (attempt {}/{})",
+                    url, e.message, backoff, attempt, maxRetries
                 )
                 delay(backoff)
                 attempt++
@@ -235,9 +246,9 @@ class GithubClient(
                 }
             } catch (ce: CancellationException) {
                 throw ce
-            } catch (e: java.io.IOException) {
+            } catch (e: IOException) {
                 if (attempt > maxRetries) {
-                    throw java.io.IOException("GraphQL network error after $maxRetries attempts: ${e.message}", e)
+                    throw IOException("GraphQL network error after $maxRetries attempts: ${e.message}", e)
                 }
                 val backoff = (1L shl (attempt - 1).coerceAtMost(5)).seconds
                 log.warn(
