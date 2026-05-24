@@ -24,6 +24,13 @@ class KeepMapper(
 
     private val proposalTextMetaKeysSeen = mutableSetOf<String>()
 
+    /**
+     * HEAD-path → final (collision-suffixed) proposal_id. Populated by [mapProposals].
+     * Used by [buildLoginsByProposalId] to translate a revision's `head_path` into
+     * the actual PK value used in the Proposal table.
+     */
+    private val headPathToFinalProposalId = mutableMapOf<String, String>()
+
     fun mapAll(): Rows {
         val proposalGroups = mapProposals()
         val proposals = proposalGroups.map { it.proposal }
@@ -74,7 +81,7 @@ class KeepMapper(
 
         val commitStreams = listOf(
             readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
-                it.getJsonString("_path") + ":" + it.getJsonString("sha")
+                it.getJsonString("sha")
             },
             readJsonlObjects(normalizedDir, "keep-pr-commits").keepLatestScrapesBy {
                 it.getJsonString("sha")
@@ -233,22 +240,20 @@ class KeepMapper(
         // id (data collision — e.g. KEEP-0412 is used by two distinct proposal files); each
         // variant gets a `-0`/`-1`/... suffix so the (project_id, proposal_id) PK stays
         // unique. The bare id remains searchable via [proposalId.substringBefore('-')].
-        val headPathToFinalProposalId: Map<String, String> = run {
-            val map = mutableMapOf<String, String>()
-            for ((bareId, group) in proposalGroupedCommits.groupBy { it.first.proposalPathToId() }) {
-                if (group.size == 1) {
-                    map[group[0].first] = bareId
-                } else {
-                    log.info(
-                        "KEEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
-                        bareId, group.size, bareId, bareId, group.size - 1,
-                    )
-                    group.sortedBy { it.first }.forEachIndexed { idx, (headPath, _) ->
-                        map[headPath] = "$bareId-$idx"
-                    }
+        // Persisted to the class field for downstream use (buildLoginsByProposalId).
+        headPathToFinalProposalId.clear()
+        for ((bareId, group) in proposalGroupedCommits.groupBy { it.first.proposalPathToId() }) {
+            if (group.size == 1) {
+                headPathToFinalProposalId[group[0].first] = bareId
+            } else {
+                log.info(
+                    "KEEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
+                    bareId, group.size, bareId, bareId, group.size - 1,
+                )
+                group.sortedBy { it.first }.forEachIndexed { idx, (headPath, _) ->
+                    headPathToFinalProposalId[headPath] = "$bareId-$idx"
                 }
             }
-            map
         }
 
         return proposalGroupedCommits.map { proposalCommits ->
@@ -355,27 +360,42 @@ class KeepMapper(
     }
 
     /**
-     * Best-effort `proposalId -> ghLogins` map, derived from
-     * `keep-commits.jsonl` (which contains commits scoped to proposal markdown files via
-     * the `_path` meta). For every commit's author, we record a "this user committed to this proposal"
-     * entry — letting [mapProposals] upgrade matching proposal-meta-text authors from name-only
-     * resolution to a real GH login.
+     * Best-effort `proposalId -> ghLogins` map: who committed to each proposal,
+     * by GitHub login. Used to upgrade proposal-meta-text authors (currently
+     * resolved by name only) to a real GH login when they also appear as a git
+     * author on a commit to that same proposal.
+     *
+     * Join is across two streams: `keep-proposal-revisions.jsonl` provides the
+     * `head_path → commit_sha` edges (rename-following ensures every commit
+     * lands under the proposal's *current* head path even if the file was
+     * renamed in between), and `keep-commits.jsonl` provides `sha → login`.
+     * [headPathToFinalProposalId] (populated by [mapProposals]) converts the
+     * head path to the actual (suffixed) proposal_id.
      */
     private fun buildLoginsByProposalId(): Map<String, Set<String>> {
+        val shaToLogin: Map<String, String> = readJsonlObjects(normalizedDir, "keep-commits")
+            .keepLatestScrapesBy { it.getJsonString("sha") }
+            .mapNotNull { commit ->
+                val sha = commit.getJsonString("sha")
+                val login = (commit["author"] as? JsonObject)
+                    ?.getJsonStringOrNull("login")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                sha to login
+            }
+            .toMap()
+
         val result = mutableMapOf<String, MutableSet<String>>()
-        val latestJsonlObjects = readJsonlObjects(normalizedDir, "keep-commits").keepLatestScrapesBy {
-            it.getJsonString("_path") + ":" + it.getJsonString("sha")
-        }
-        for (commit in latestJsonlObjects) {
-            val path = commit.getJsonString("_path")
-            if (path.endsWith("TEMPLATE.md")) continue
-            val proposalId = path.proposalPathToId()
-            val ghLogin = (commit["author"] as? JsonObject)
-                ?.getJsonStringOrNull("login")
-                ?.takeIf { it.isNotBlank() }
-                ?: continue
-            result.getOrPut(proposalId) { mutableSetOf() }.add(ghLogin)
-        }
+        readJsonlObjects(normalizedDir, "keep-proposal-revisions")
+            .keepLatestScrapesBy { it.getJsonString("path") to it.getJsonString("commit_sha") }
+            .forEach { row ->
+                val headPath = row.getJsonString("head_path")
+                if (headPath.contains("TEMPLATE.md")) return@forEach
+                val proposalId = headPathToFinalProposalId[headPath] ?: return@forEach
+                val sha = row.getJsonString("commit_sha")
+                val login = shaToLogin[sha] ?: return@forEach
+                result.getOrPut(proposalId) { mutableSetOf() }.add(login)
+            }
         return result
     }
 

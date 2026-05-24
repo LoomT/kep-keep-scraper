@@ -1,90 +1,142 @@
 package dev.cse3000.gh.scraper
 
-import dev.cse3000.gh.cache.SyncCursor
+import dev.cse3000.gh.cache.SeenShas
 import dev.cse3000.gh.client.GithubClient
+import dev.cse3000.gh.git.RepoMirror
 import dev.cse3000.gh.io.JsonlSink
-import kotlinx.coroutines.flow.take
-import kotlinx.serialization.json.contentOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.revwalk.RevSort
+import org.eclipse.jgit.revwalk.RevWalk
 import org.slf4j.LoggerFactory
 
 /**
- * Fetches commits via GitHub's REST `/repos/{slug}/commits` endpoint. Unlike
- * the local-git revision walker, this captures GitHub-specific metadata —
- * notably `author.login` / `committer.login` (the GitHub user mapped from
- * the git author email).
+ * Incremental commits collector. Drives enumeration from the local git mirror
+ * (already kept current by [RepoMirror.ensureUpToDate]), diffs reachable SHAs
+ * against the persisted [SeenShas] set, and fetches each new commit individually
+ * via `/repos/{slug}/commits/{sha}` to capture GitHub-side metadata (notably
+ * `author.login`).
  *
- * If [pathFilter] is non-null, the collector issues one paginated request
- * per path with `?path=<p>` to restrict results to commits that touched that
- * path. With [pathFilter] null, the entire repo's commit history is fetched.
+ * Why local-git-driven instead of `?since=<date>`:
+ * - Out-of-order commits (back-merges, rebase of a feature branch onto an older
+ *   base) have committer dates older than the cursor and would be silently
+ *   skipped by a date-based incremental.
+ * - Force-pushed branches may dredge in new commits whose dates predate
+ *   everything we've seen; same problem.
  *
- * Incremental: tracks the max `commit.committer.date` seen across all
- * fetched commits in the cursor key `<repoTag>.commits.committer_date` and
- * passes it as `?since=` on the next run. (GitHub's commit list endpoint
- * filters by committer date.)
+ * `git fetch` (with the default `+`-prefixed refspec accepting non-fast-forward
+ * updates) surfaces every commit reachable from current refs regardless of date
+ * order or branch rewrites. SHA-set comparison then identifies exactly the
+ * commits we haven't yet emitted.
+ *
+ * Orphaned SHAs (force-pushed away) remain in the persisted set so we never
+ * refetch them. Their existing JSONL rows stay too; downstream consumers dedup
+ * by `sha` and the contribution to the login → (name, email) map is unaffected.
  */
-class CommitsCollector(
-    private val client: GithubClient,
+class CommitsCollector internal constructor(
     private val sink: JsonlSink,
-    owner: String,
-    repo: String,
+    private val mirror: RepoMirror,
     private val repoTag: String,
-    private val pathFilter: List<String>? = null,
+    private val seenShas: SeenShas,
+    private val concurrency: Int,
+    private val rateLimitSnapshot: () -> Int,
+    private val fetchCommit: suspend (sha: String) -> JsonObject?,
 ) {
-    private val slug = "$owner/$repo"
+    private val slug = mirror.slug
     private val log = LoggerFactory.getLogger("${CommitsCollector::class.java.name}.$repoTag")
 
-    suspend fun run(limit: Int? = null) {
-        if (pathFilter == null) {
-            log.info(
-                "Commits phase starting (slug={}, limit={}, mode=full-repo)",
-                slug, limit,
-            )
-            collectStream(path = null, limit = limit)
-        } else {
-            log.info(
-                "Commits phase starting (slug={}, limit={}, mode=per-path, paths={})",
-                slug, limit, pathFilter.size,
-            )
-            var processedAcrossPaths = 0
-            var pathsDone = 0
-            for (path in pathFilter) {
-                if (limit != null && processedAcrossPaths >= limit) break
-                val remaining = limit?.let { it - processedAcrossPaths }
-                processedAcrossPaths += collectStream(path = path, limit = remaining)
-                pathsDone++
-                if (pathsDone % 50 == 0) {
-                    log.info(
-                        "Commits per-path progress: {}/{} paths done, {} total commits emitted (rate-limit remaining: {})",
-                        pathsDone, pathFilter.size, processedAcrossPaths, client.rateLimiter.remainingSnapshot,
-                    )
-                }
-            }
-            log.info(
-                "Commits phase done: {} paths, {} total commits emitted",
-                pathFilter.size, processedAcrossPaths,
-            )
+    /** Production wiring: calls `/repos/{slug}/commits/{sha}` via the real GitHub client. */
+    constructor(
+        client: GithubClient,
+        sink: JsonlSink,
+        mirror: RepoMirror,
+        repoTag: String,
+        seenShas: SeenShas,
+        concurrency: Int = 8,
+    ) : this(
+        sink = sink,
+        mirror = mirror,
+        repoTag = repoTag,
+        seenShas = seenShas,
+        concurrency = concurrency,
+        rateLimitSnapshot = makeRateLimitSnapshot(client),
+        fetchCommit = makeFetcher(client, mirror.slug),
+    )
+
+    companion object {
+        private fun makeRateLimitSnapshot(client: GithubClient): () -> Int =
+            { client.rateLimiter.remainingSnapshot }
+
+        private fun makeFetcher(client: GithubClient, slug: String): suspend (String) -> JsonObject? = { sha ->
+            val url = client.apiUrl("/repos/$slug/commits/$sha")
+            runCatching { client.getJson(url).jsonObject }.getOrNull()
         }
     }
 
-    /** Returns the number of commits emitted from this stream. */
-    private suspend fun collectStream(path: String?, limit: Int?): Int {
-        val params = mutableMapOf("per_page" to "100")
-        if (path != null) params["path"] = path
-        val url = client.apiUrl("/repos/$slug/commits", params)
-        val flow = client.getJsonPaginated(url)
-        val capped = if (limit != null) flow.take(limit) else flow
-        var processed = 0
-        capped.collect { item ->
-            val obj = item.jsonObject
-            val meta = buildMap {
-                put("repo", slug)
-                if (path != null) put("path", path)
-            }
-            sink.emit("$repoTag-commits", obj, meta)
-            processed++
+    suspend fun run(incremental: Boolean, limit: Int?) {
+        val reachable = enumerateReachableShas(mirror.repository)
+        val seen = if (incremental) seenShas.get(slug) else emptySet()
+        val newShas = reachable - seen
+        val toFetch = if (limit != null && newShas.size > limit) {
+            log.info(
+                "Commits phase: capping fetch to limit={} (would have fetched {})",
+                limit, newShas.size,
+            )
+            newShas.toList().take(limit)
+        } else newShas.toList()
+        log.info(
+            "Commits phase starting (slug={}, incremental={}, reachable={}, seen={}, new={}, rate-limit remaining={})",
+            slug, incremental, reachable.size, seen.size, toFetch.size, rateLimitSnapshot(),
+        )
+
+        if (toFetch.isEmpty()) {
+            log.info("Commits phase done: nothing new to fetch")
+            return
         }
-        return processed
+
+        var emitted = 0
+        coroutineScope {
+            toFetch.asFlow()
+                .map { sha -> sha to runCatching { fetchCommit(sha) }.getOrNull() }
+                .buffer(concurrency)
+                .flowOn(Dispatchers.IO)
+                .collect { (sha, obj) ->
+                    if (obj != null) {
+                        sink.emit("$repoTag-commits", obj, mapOf("repo" to slug))
+                        seenShas.add(slug, sha)
+                        emitted++
+                        if (emitted % 100 == 0) {
+                            log.info(
+                                "Commits progress: {}/{} fetched (rate-limit remaining={})",
+                                emitted, toFetch.size, rateLimitSnapshot(),
+                            )
+                        }
+                    } else {
+                        log.warn("Failed to fetch commit {}/{}", slug, sha.take(8))
+                    }
+                }
+        }
+        log.info("Commits phase done: {}/{} new commits emitted", emitted, toFetch.size)
+    }
+
+    private fun enumerateReachableShas(repo: Repository): Set<String> {
+        val shas = mutableSetOf<String>()
+        RevWalk(repo).use { rw ->
+            rw.sort(RevSort.COMMIT_TIME_DESC, true)
+            for (ref in repo.refDatabase.refs) {
+                val tip = ref.objectId ?: continue
+                val commit = runCatching { rw.parseCommit(tip) }.getOrNull() ?: continue
+                rw.markStart(commit)
+            }
+            for (commit in rw) shas += commit.id.name
+        }
+        return shas
     }
 }

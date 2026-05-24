@@ -2,6 +2,7 @@ package dev.cse3000.gh.io
 
 import dev.cse3000.gh.cache.EtagStore
 import dev.cse3000.gh.cache.RawCache
+import dev.cse3000.gh.cache.SeenShas
 import dev.cse3000.gh.cache.SyncCursor
 import dev.cse3000.gh.client.GithubClient
 import dev.cse3000.gh.client.RateLimiter
@@ -14,6 +15,7 @@ class ScrapeContext(
     val cursor: SyncCursor,
     val etags: EtagStore,
     val gitCursor: GitCursor,
+    val seenCommitShas: SeenShas,
     val dataDir: Path,
 ) : AutoCloseable {
     val reposDir: Path = dataDir.resolve("repos")
@@ -22,6 +24,7 @@ class ScrapeContext(
         etags.persist()
         cursor.persist()
         gitCursor.persist()
+        seenCommitShas.persist()
     }
 
     override fun close() {
@@ -36,9 +39,10 @@ class ScrapeContext(
             val etags = EtagStore(dataDir.resolve("cache").resolve("etags.json"))
             val cursor = SyncCursor(dataDir.resolve("cache").resolve("last-sync.json"))
             val gitCursor = GitCursor(dataDir.resolve("cache").resolve("git-heads.json"))
+            val seenCommitShas = SeenShas(dataDir.resolve("cache").resolve("seen-commit-shas.json"))
             val client = GithubClient(token, cache, etags, rateLimiter = RateLimiter(permits = Env.concurrency()))
             val sink = JsonlSink(dataDir.resolve("normalized"))
-            return ScrapeContext(client, sink, cursor, etags, gitCursor, dataDir)
+            return ScrapeContext(client, sink, cursor, etags, gitCursor, seenCommitShas, dataDir)
         }
     }
 }

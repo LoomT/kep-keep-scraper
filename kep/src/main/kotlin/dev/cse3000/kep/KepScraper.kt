@@ -28,21 +28,12 @@ class KepScraper(private val ctx: ScrapeContext) {
         )
         val genericScraper = GenericScraper(ctx, OWNER, REPO, TAG)
         coroutineScope {
-            // Same split as KeepScraper: delegate non-proposal, non-commit, non-users,
-            // non-orgs phases to GenericScraper; run commits ourselves with per-path filtering
-            // on kep.yaml + README files; we run users + orgs again
-            // at the end to ensure that they run after proposals and commits
-            val genericPhases = applicable -
-                    ScrapePhase.PROPOSALS - ScrapePhase.COMMITS -
-                    ScrapePhase.USERS - ScrapePhase.ORGS
+            val genericPhases = applicable - ScrapePhase.PROPOSALS - ScrapePhase.USERS - ScrapePhase.ORGS
             if (genericPhases.isNotEmpty()) {
                 launch { genericScraper.run(incremental, limit, genericPhases) }
             }
             if (ScrapePhase.PROPOSALS in applicable) {
                 launch { KepRevisionCollector(ctx).run(incremental) }
-            }
-            if (ScrapePhase.COMMITS in applicable) {
-                launch { KepCommitsCollector(ctx).run(limit) }
             }
         }
         val laterPhases = phases.intersect(setOf(ScrapePhase.USERS, ScrapePhase.ORGS))

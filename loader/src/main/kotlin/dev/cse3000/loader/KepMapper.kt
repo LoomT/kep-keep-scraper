@@ -109,7 +109,7 @@ class KepMapper(
 
         val commitStreams = listOf(
             readJsonlObjects(normalizedDir, "kep-commits").keepLatestScrapesBy {
-                it.getJsonString("_path") + ":" + it.getJsonString("sha")
+                it.getJsonString("sha")
             },
             readJsonlObjects(normalizedDir, "kep-pr-commits").keepLatestScrapesBy {
                 it.getJsonString("sha")

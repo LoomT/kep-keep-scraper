@@ -1,5 +1,6 @@
 package dev.cse3000.gh.scraper
 
+import dev.cse3000.gh.git.RepoMirror
 import dev.cse3000.gh.io.ScrapeContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -54,17 +55,17 @@ class GenericScraper(
                 launch { DiscussionsCollector(ctx, owner, repo, tag).run(incremental, limit) }
             }
             if (ScrapePhase.COMMITS in phases) {
-                // Generic = full repo, no path filter. Named scrapers override this with
-                // their own per-path commits collector.
                 launch {
-                    CommitsCollector(
-                        client = ctx.client,
-                        sink = ctx.sink,
-                        owner = owner,
-                        repo = repo,
-                        repoTag = tag,
-                        pathFilter = null,
-                    ).run(limit)
+                    RepoMirror(owner, repo, ctx.reposDir).use { mirror ->
+                        mirror.ensureUpToDate()
+                        CommitsCollector(
+                            client = ctx.client,
+                            sink = ctx.sink,
+                            mirror = mirror,
+                            repoTag = tag,
+                            seenShas = ctx.seenCommitShas,
+                        ).run(incremental, limit)
+                    }
                 }
             }
         }

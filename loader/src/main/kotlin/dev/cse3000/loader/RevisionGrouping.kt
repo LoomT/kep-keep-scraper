@@ -27,7 +27,7 @@ internal object RevisionGrouping {
         crossinline key: (JsonObject) -> String,
     ): Map<String, List<JsonObject>> =
         readJsonlObjects(normalizedDir, stream)
-            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
+            .keepLatestScrapesBy { it.getJsonString("path") to it.getJsonString("commit_sha") }
             .sortedBy { it.getJsonString("committed_at") }
             .groupBy { key(it) }
 
