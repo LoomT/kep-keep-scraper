@@ -26,6 +26,7 @@
 | contains `under consideration`                       | review                                       |
 | contains `working on`                                | review                                       |
 | contains `prototype` or `prototyped`                 | review                                       |
+| contains `pending`                                   | review                                       |
 | contains `submitted`                                 | draft                                        |
 | contains `proposed`                                  | draft                                        |
 | `draft` or starts with `draft `                      | draft                                        |

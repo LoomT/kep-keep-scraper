@@ -515,29 +515,45 @@ class KeepMapper(
         val title = nonBlankLines[0].removePrefix("# ").trim()
         assert(title.isNotBlank()) { "Title was not found" }
 
-        val proposalTextWithoutMetaData = this.lines()
-            .dropWhile { it.isBlank() }
-            .drop(1)
-            .dropWhile { !it.isLineAfterMetadata() }
-            .joinToString("\n")
-
-        val rawMetaLines = nonBlankLines.drop(1).takeWhile { !it.isLineAfterMetadata() }
+        val rawLines = this.lines()
+        val titleIdx = rawLines.indexOfFirst { it.isNotBlank() }
         val metaLines = mutableListOf<String>()
-        for (line in rawMetaLines) {
+        var sawAnyBullet = false
+        var metaEndIdx = rawLines.size
+        for (i in (titleIdx + 1) until rawLines.size) {
+            val line = rawLines[i]
+            if (line.isLineAfterMetadata()) {
+                metaEndIdx = i
+                break
+            }
+            if (line.isBlank()) {
+                if (sawAnyBullet) {
+                    // KEEP-320 had a blank line in the middle of the bullet list
+                    val nextLine = rawLines[i + 1]
+                    if (nextLine.startsWith("* ") || nextLine.startsWith("- ")) continue
+
+                    metaEndIdx = i
+                    break
+                } else {
+                    continue
+                }
+            }
+            if (line.startsWith("===")) continue // title separator most likely
             if (line.startsWith("* ") || line.startsWith("- ")) {
                 metaLines += line
-            } else if (metaLines.isNotEmpty()) {
-                // Continuation: append, joined with a single space, leading indent stripped.
+                sawAnyBullet = true
+            } else if (sawAnyBullet) {
+                // Continuation of the previous bullet (indented wrap), joined with a single space.
                 metaLines[metaLines.lastIndex] = metaLines.last().trimEnd() + " " + line.trim()
             } else {
-                log.warn(
-                    "Meta line before any bullet entry in KEEP-{} ver-{}; ignoring: '{}'",
-                    proposalId,
-                    revisionIndex,
-                    line
-                )
+                // Non-bullet content before any bullet — this proposal has no metadata
+                // bullet list; treat everything from here on as body content.
+                metaEndIdx = i
+                break
             }
         }
+
+        val proposalTextWithoutMetaData = rawLines.drop(metaEndIdx).joinToString("\n")
 
         val metaPairs = metaLines
             .map { it.removePrefix("* ").removePrefix("- ") }
@@ -595,7 +611,7 @@ class KeepMapper(
             metaMap["type"],
             authors.orEmpty(),
             rawStatus = rawStatus,
-            normalizedStatus = normalizeStatus(statusToken),
+            normalizedStatus = normalizeStatus(statusToken, proposalId),
             implementedAt,
             metaMap["discussion"]?.extractDiscussionIdFromDiscussionField(),
             metaMap["discussion"]?.extractPrIdFromDiscussionField(),
@@ -612,7 +628,7 @@ class KeepMapper(
      *
      * TODO: when new statuses appear in the WARN log, decide which bucket they belong in and extend this match.
      */
-    private fun normalizeStatus(token: String): String {
+    private fun normalizeStatus(token: String, proposalId: String): String {
         // Strip surrounding punctuation / markdown bold markers / backticks; some KEEPs write
         // `* **Status**: ** In progress` (extra leading **) or wrap the whole status in **bold**.
         val k = token.lowercase()
@@ -654,6 +670,7 @@ class KeepMapper(
             k.contains("under consideration") -> "review"
             k.contains("working on") -> "review" // "Working on the implementation"
             k.contains("prototype") || k.contains("prototyped") -> "review"
+            k.contains("pending") -> "review"
 
             // Draft: filed but not yet through review.
             k.contains("submitted") -> "draft"
@@ -666,7 +683,7 @@ class KeepMapper(
 
             else -> {
                 log.warn(
-                    "MISSING_STATUS_MAPPING: '{}' (raw token); mapping to 'unknown'. Add a case in normalizeStatus.",
+                    "MISSING_STATUS_MAPPING: '{}' (raw token) in KEEP-$proposalId; mapping to 'unknown'. Add a case in normalizeStatus.",
                     token
                 )
                 "unknown"
