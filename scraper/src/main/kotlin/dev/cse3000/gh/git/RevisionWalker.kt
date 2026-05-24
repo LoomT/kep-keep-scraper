@@ -8,26 +8,29 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.diff.DiffConfig
+import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
-import org.eclipse.jgit.revwalk.RevCommit
-import org.eclipse.jgit.revwalk.RevSort
-import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.revwalk.*
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.slf4j.LoggerFactory
 
 /**
- * Walks file-modification history for paths matching [pathPredicate].
+ * Walks file-modification history for paths matching [pathPredicate], following
+ * file renames the way `git log --follow` does.
  *
  * Strategy:
  * 1. Enumerate all paths matching the predicate at HEAD.
- * 2. For each path, walk `git log -- <path>` (optionally bounded by `not(sinceSha)`).
- * 3. For each (path, commit) pair, read the blob at that commit and emit a JsonObject row.
+ * 2. For each HEAD path, drive a [RevWalk] with a [FollowFilter] so the walk
+ *    crosses rename boundaries; track the historical path via [RenameCallback].
+ * 3. For each (commit, historical-path) pair, read the blob at the historical
+ *    path and emit a JsonObject row. Rows carry both `head_path` (stable HEAD
+ *    key for downstream grouping) and `path` (the path at that commit).
  *
- * Limitation: rename history is not followed; a file renamed in HEAD will only have
- * commits under its current name returned. Files deleted in HEAD are not walked.
- * Both are acceptable for KEEP/KEP where renames and proposal deletions are rare.
+ * Limitations: copy detection is not enabled (matches Git's `--follow` default);
+ * rename detection's similarity heuristic can miss a rename whose contents were
+ * heavily rewritten in the same commit; files deleted at HEAD are not walked.
  */
 class RevisionWalker(
     private val mirror: RepoMirror,
@@ -104,21 +107,63 @@ class RevisionWalker(
 
     private fun walkPath(
         repo: Repository,
-        path: String,
+        headPath: String,
         headId: ObjectId,
         sinceId: ObjectId?,
     ): List<JsonObject> {
         val rows = mutableListOf<JsonObject>()
-        Git(repo).use { git ->
-            val cmd = git.log().add(headId).addPath(path)
-            if (sinceId != null) cmd.not(sinceId)
-            val commits = runCatching { cmd.call().toList() }.getOrElse {
-                log.warn("git log failed for {}: {}", path, it.message)
+        val pathHistory = mutableListOf(headPath)
+        var renamedSinceLastCommit: String? = null
+
+        RevWalk(repo).use { rw ->
+            val diffConfig = repo.config.get(DiffConfig.KEY)
+            val followFilter = FollowFilter.create(headPath, diffConfig)
+            followFilter.renameCallback = object : RenameCallback() {
+                override fun renamed(entry: DiffEntry) {
+                    pathHistory += entry.oldPath
+                    renamedSinceLastCommit = entry.oldPath
+                }
+            }
+            rw.treeFilter = followFilter
+
+            try {
+                rw.markStart(rw.parseCommit(headId))
+                if (sinceId != null) {
+                    runCatching { rw.markUninteresting(rw.parseCommit(sinceId)) }
+                        .onFailure {
+                            log.warn(
+                                "markUninteresting failed for since={} on {}: {}",
+                                sinceId.name.take(8), headPath, it.message,
+                            )
+                        }
+                }
+            } catch (t: Throwable) {
+                log.warn("revwalk init failed for {}: {}", headPath, t.message)
                 return rows
             }
-            for (commit in commits) {
-                val content = blobContent(repo, commit, path) ?: continue
-                rows += buildRow(path, commit, content)
+
+            val iter = rw.iterator()
+            while (true) {
+                val commit = runCatching { if (iter.hasNext()) iter.next() else null }
+                    .getOrElse {
+                        log.warn("revwalk failed for {}: {}", headPath, it.message)
+                        null
+                    } ?: break
+
+                var pathAtCommit: String? = null
+                var content: String? = null
+                for (i in pathHistory.indices.reversed()) {
+                    val candidate = pathHistory[i]
+                    content = blobContent(repo, commit, candidate)
+                    if (content != null) {
+                        pathAtCommit = candidate
+                        break
+                    }
+                }
+                if (content != null && pathAtCommit != null) {
+                    rows += buildRow(headPath, pathAtCommit, commit, content, renamedSinceLastCommit)
+                }
+                renamedSinceLastCommit = null
             }
         }
         return rows
@@ -133,12 +178,21 @@ class RevisionWalker(
         }
     }
 
-    private fun buildRow(path: String, commit: RevCommit, contentText: String): JsonObject {
+    private fun buildRow(
+        headPath: String,
+        path: String,
+        commit: RevCommit,
+        contentText: String,
+        renamedFrom: String?,
+    ): JsonObject {
         val author = commit.authorIdent
         val committer = commit.committerIdent
         return buildJsonObject {
+            put("head_path", JsonPrimitive(headPath))
+            put("head_dir", JsonPrimitive(headPath.substringBeforeLast('/', "")))
             put("path", JsonPrimitive(path))
             put("dir", JsonPrimitive(path.substringBeforeLast('/', "")))
+            if (renamedFrom != null) put("renamed_from", JsonPrimitive(renamedFrom))
             put("commit_sha", JsonPrimitive(commit.id.name))
             put("parent_shas", JsonArray(commit.parents.map { JsonPrimitive(it.id.name) }))
             put("author_name", JsonPrimitive(author.name))

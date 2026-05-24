@@ -14,7 +14,7 @@ class KeepRevisionCollector(private val ctx: ScrapeContext) {
             val sinceSha = if (incremental) ctx.gitCursor.get(mirror.slug) else null
             log.info("KEEP revision walk starting (since={})", sinceSha?.take(8))
             val walker = RevisionWalker(mirror) { path ->
-                path.startsWith("proposals/") && path.endsWith(".md")
+                path.startsWith("proposals/") && path.endsWith(".md") && !path.endsWith("TEMPLATE.md")
             }
             walker.walk(sinceSha).collect { row ->
                 ctx.sink.emit("keep-proposal-revisions", row, mapOf("repo" to mirror.slug))

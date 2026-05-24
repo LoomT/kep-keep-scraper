@@ -198,10 +198,7 @@ data/
     keep-orgs.jsonl
     keep-repo-info.jsonl
     keep-proposal-revisions.jsonl
-    kep-*.jsonl                   # mirror of the above, plus:
-    kep-revisions-yaml.jsonl
-    kep-revisions-readme.jsonl
-    kep-revisions-other.jsonl
+    kep-*.jsonl                   # mirror of the above
   manifests/                      # per-run summary: counts, request totals, cancelled flag
     Kotlin_KEEP-full-2026-04-27T....json
   logs/scraper.log                # rolling log file (also goes to stdout)

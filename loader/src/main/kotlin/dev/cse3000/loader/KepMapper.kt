@@ -14,16 +14,20 @@ private val log = LoggerFactory.getLogger(KepMapper::class.java)
  * Maps `kep-*.jsonl` streams (under [normalizedDir]) to typed [Rows] for the
  * KEP project.
  *
- * Each KEP lives in `keps/<sig>/<number>-<slug>/` and has two co-located files
- * we care about: `kep.yaml` (structured metadata) and `README.md` (the proposal
- * body). A single git commit usually touches both; we group revisions by
- * directory, sort by commit time, and pair each commit's yaml with its readme
- * (carrying forward the prior side when a commit touches only one).
+ * Each KEP lives in a leaf directory containing `kep.yaml` (structured metadata)
+ * and `README.md` (the proposal body). The usual location is
+ * `keps/<sig>/<number>-<slug>/`, though some sigs nest proposals one level deeper
+ * (`keps/<sig>/<group>/<number>-<slug>/`). A single git commit usually touches
+ * both files; we group revisions by the leaf directory, sort by commit time, and
+ * pair each commit's yaml with its readme (carrying forward the prior side when
+ * a commit touches only one).
  *
- * Early KEPs used a flat `keps/<sig>/<date>-<slug>.md` format. When such a file
- * was later migrated to the modern split layout, we associate its history with
- * the new dir by matching `<sig>` + the slug fragment. For these early KEP `.md`
- * files, the yaml content was embedded in the `.md` file itself.
+ * Early KEPs used a flat `keps/<sig>/<date>-<slug>.md` format with the yaml
+ * embedded as front-matter. The upstream migration to the split layout was done
+ * via `git mv` from the single `.md` to the new dir's `README.md`, so the
+ * walker's rename-following surfaces those pre-migration commits under the
+ * modern dir naturally — the per-commit `path` field reveals the historical
+ * filename.
  *
  * `proposal_id` is the bare KEP number (e.g. `"2313"`). A handful of dirs
  * collide on this prefix (three `0000-*` and two `2133-*`); the first dir wins
@@ -190,93 +194,36 @@ class KepMapper(
     }
 
     private fun mapProposals(): List<ProposalGroup> {
-        val yamlByKey = readJsonlObjects(normalizedDir, "kep-revisions-yaml")
-            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
-            .sortedBy { it.getJsonString("committed_at") }
-            .toList()
-        val readmeByKey = readJsonlObjects(normalizedDir, "kep-revisions-readme")
-            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
-            .sortedBy { it.getJsonString("committed_at") }
-            .toList()
+        // Every KEP at HEAD lives in a leaf directory containing `kep.yaml` +
+        // `README.md`. The usual layout is `keps/<sig>/<NNNN>-<slug>/`, but some
+        // proposals nest deeper under the sig (e.g. `keps/<sig>/<group>/<NNNN>-<slug>/`).
+        // Either way, the head dir uniquely identifies one logical proposal, so we
+        // group on it. Pre-migration single-file `.md`s no longer exist at HEAD
+        // (leftover ones are one-line redirect stubs filtered by `isKepFile`); their
+        // history surfaces here as older commits whose per-commit `path` is the old
+        // single-file form, attached to the modern README's dir via the `git mv`
+        // that rename-following crosses.
+        val byKey: Map<String, List<RawCommit>> = RevisionGrouping
+            .readGroupedByHeadDir(normalizedDir, "kep-proposal-revisions")
+            .mapValues { (_, rows) -> rows.toRawCommits() }
 
-        // Pre-migration single-file KEPs: `keps/<sig>/<dateOrSlug>-*.md` — exactly 3 path
-        // segments, ending in .md. PRR yaml files (`keps/prod-readiness/...`), example assets
-        // inside modern dirs, and other deep paths are ignored — they're not predecessors of
-        // a single modern KEP dir.
-        val oldFormatByPath = readJsonlObjects(normalizedDir, "kep-revisions-other")
-            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
-            .sortedBy { it.getJsonString("committed_at") }
-            .filter {
-                val p = it.getJsonString("path")
-                p.endsWith(".md", ignoreCase = true) && p.count { c -> c == '/' } == 2 && p.startsWith("keps/")
-            }
-            .groupBy { it.getJsonString("path") }
-            .toList()
-
-        val byDir: Map<String, List<RawCommit>> = (yamlByKey + readmeByKey)
-            .groupBy { it.getJsonString("dir") }
-            .mapValues { (dir, jsons) ->
-                val sigDir = dir.substringBeforeLast('/')                   // keps/sig-release
-                val dirSlug = extractSlug(dir.substringAfterLast('/'))      // artifact-management
-
-                val oldPaths = oldFormatByPath.filter { (oldPath, _) ->
-                    oldPath.startsWith("$sigDir/") &&
-                            extractSlug(
-                                oldPath.substringAfterLast('/').removeSuffix(".md").removeSuffix(".MD")
-                            ) == dirSlug
-                }
-                if (oldPaths.size > 1) {
-                    log.warn(
-                        "{}: {} candidate old-format paths matched same slug, picking first: {}",
-                        dir, oldPaths.size, oldPaths.map { it.first },
-                    )
-                }
-                if (oldPaths.isNotEmpty()) {
-                    log.info("Found old format for {}: {}", dir, oldPaths.first().first)
-                }
-
-                val oldRawCommits = oldPaths.firstOrNull()?.second.orEmpty().map { json ->
-                    RawCommit(
-                        commitSha = json.getJsonString("commit_sha"),
-                        committedAt = json.getJsonString("committed_at"),
-                        yaml = null,
-                        readme = null,
-                        oldFormat = json,
-                    )
-                }
-
-                val newRawCommits = jsons.groupBy { it.getJsonString("commit_sha") }
-                    .map { (sha, group) ->
-                        val yaml = group.find { it.getJsonString("path").endsWith("kep.yaml", ignoreCase = true) }
-                        val readme = group.find { it.getJsonString("path").endsWith("README.md", ignoreCase = true) }
-                        RawCommit(
-                            commitSha = sha,
-                            committedAt = group.first().getJsonString("committed_at"),
-                            yaml = yaml,
-                            readme = readme,
-                            oldFormat = null,
-                        )
-                    }
-
-                (oldRawCommits + newRawCommits).sortedBy { it.committedAt }
-            }
-
-        // Pass 1: assign each dir a bare proposal_id (kep-number or leading-number-from-dir),
-        // then disambiguate collisions by appending `-0`, `-1`, ... so every variant gets a
-        // unique PK. Both the suffixed final id and the slug → final-id map are populated.
-        val barePerDir = mutableMapOf<String, String>()
-        for ((dir, rawCommits) in byDir) {
+        // Pass 1: assign each key a bare proposal_id (kep-number from yaml when present,
+        // else the leading number from the dir/file name). Disambiguate collisions by
+        // appending `-0`, `-1`, ... so every variant gets a unique PK. Both the suffixed
+        // final id and the slug → final-id map are populated.
+        val barePerKey = mutableMapOf<String, String>()
+        for ((key, rawCommits) in byKey) {
             val lastCommitWithYaml = rawCommits.lastOrNull { it.yaml != null }
-            val meta = lastCommitWithYaml?.yaml?.let { parseYamlMeta(it, dir, lastCommitWithYaml.commitSha) }
-            val id = meta?.kepNumber ?: dir.proposalIdFromDir() ?: continue
-            barePerDir[dir] = id
+            val meta = lastCommitWithYaml?.yaml?.let { parseYamlMeta(it, key, lastCommitWithYaml.commitSha) }
+            val id = meta?.kepNumber ?: key.proposalIdFromKey() ?: continue
+            barePerKey[key] = id
         }
-        val dirToProposalId = mutableMapOf<String, String>()
-        for ((bareId, entries) in barePerDir.entries.groupBy { it.value }) {
+        val keyToProposalId = mutableMapOf<String, String>()
+        for ((bareId, entries) in barePerKey.entries.groupBy { it.value }) {
             if (entries.size == 1) {
-                val dir = entries.single().key
-                dirToProposalId[dir] = bareId
-                proposalIdBySlug[extractSlug(dir.substringAfterLast('/'))] = bareId
+                val key = entries.single().key
+                keyToProposalId[key] = bareId
+                proposalIdBySlug[extractSlug(key.lastSegment().removeMdSuffix())] = bareId
             } else {
                 log.info(
                     "KEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
@@ -284,32 +231,79 @@ class KepMapper(
                 )
                 entries.sortedBy { it.key }.forEachIndexed { idx, entry ->
                     val finalId = "$bareId-$idx"
-                    dirToProposalId[entry.key] = finalId
-                    proposalIdBySlug[extractSlug(entry.key.substringAfterLast('/'))] = finalId
+                    keyToProposalId[entry.key] = finalId
+                    proposalIdBySlug[extractSlug(entry.key.lastSegment().removeMdSuffix())] = finalId
                 }
             }
         }
 
         // Pass 2: build the ProposalGroups using the now-populated proposalIdBySlug.
-        return byDir.mapNotNull { (dir, rawCommits) ->
-            val proposalId = dirToProposalId[dir] ?: return@mapNotNull null
-            buildProposalGroup(dir, proposalId, rawCommits)
+        return byKey.mapNotNull { (key, rawCommits) ->
+            val proposalId = keyToProposalId[key] ?: return@mapNotNull null
+            buildProposalGroup(key, proposalId, rawCommits)
         }
     }
 
     /**
-     * Folds a dir's raw commit list into [ProposalRevision]s. Revisions start at the first
+     * Checks whether a per-commit historical `path` looks like a pre-migration
+     * single-file KEP (`keps/<sig>/<dateOrSlug>.md`). HEAD no longer has any of
+     * these — but the rename-aware walk surfaces them in older commits as the
+     * pre-`git mv` predecessor of a modern dir's `README.md`.
+     */
+    private fun isPreMigrationSingleFile(path: String): Boolean =
+        path.startsWith("keps/") &&
+                path.endsWith(".md", ignoreCase = true) &&
+                !path.endsWith("README.md", ignoreCase = true) &&
+                path.count { it == '/' } == 2
+
+    private fun String.lastSegment(): String = substringAfterLast('/', this)
+
+    private fun String.removeMdSuffix(): String =
+        removeSuffix(".md").removeSuffix(".MD")
+
+    /**
+     * Resolves a proposal id from a head-dir grouping key (`keps/<sig>/<NNNN>-<slug>`):
+     * the leading number on the final segment.
+     */
+    private fun String.proposalIdFromKey(): String? =
+        LEADING_KEP_NUMBER_REGEX.find(lastSegment())?.groupValues?.get(1)
+
+    /**
+     * Folds a flat list of rename-aware revision rows (one per commit × file
+     * touched) into [RawCommit]s. Rows within the same commit are combined into a
+     * single RawCommit; the per-commit historical `path` selects which slot the
+     * row populates (yaml, readme, or old-format single-file).
+     */
+    private fun List<JsonObject>.toRawCommits(): List<RawCommit> =
+        groupBy { it.getJsonString("commit_sha") }
+            .map { (sha, group) ->
+                val yaml = group.find { it.getJsonString("path").endsWith("kep.yaml", ignoreCase = true) }
+                val readme = group.find { it.getJsonString("path").endsWith("README.md", ignoreCase = true) }
+                val oldFormat = group.find { isPreMigrationSingleFile(it.getJsonString("path")) }
+                RawCommit(
+                    commitSha = sha,
+                    committedAt = group.first().getJsonString("committed_at"),
+                    yaml = yaml,
+                    readme = readme,
+                    oldFormat = oldFormat,
+                )
+            }
+            .sortedBy { it.committedAt }
+
+    /**
+     * Folds a key's raw commit list into [ProposalRevision]s. Revisions start at the first
      * commit that has a body (readme OR old-format `.md`); pre-migration commits emit
      * body-only revisions (no yaml meta). Once yaml appears it's carried forward; readme
      * likewise. Old-format and readme bodies aren't carried into each other — the migration
      * commit usually adds the readme in the same commit, so the discontinuity is one
-     * revision at most.
+     * revision at most. The `key` parameter is either a modern split-layout dir or the
+     * path of an unmigrated single-file KEP.
      */
-    private fun buildProposalGroup(dir: String, proposalId: String, rawCommits: List<RawCommit>): ProposalGroup? {
+    private fun buildProposalGroup(key: String, proposalId: String, rawCommits: List<RawCommit>): ProposalGroup? {
         val extracted = rawCommits.map { it to extractYamlAndBody(it) }
         val firstBodyIndex = extracted.indexOfFirst { it.second.second != null }
         if (firstBodyIndex < 0) {
-            log.error("Skipping {}: no commit had body content (readme/old-format)", dir)
+            log.error("Skipping {}: no commit had body content (readme/old-format)", key)
             return null
         }
 
@@ -329,15 +323,16 @@ class KepMapper(
         val authorRevisions = mutableListOf<ProposalRevisionAuthor>()
         val metas = mutableListOf<KepYamlMeta>()
 
+        val titleFallback = key.lastSegment().removeMdSuffix()
         for ((index, fc) in folded.withIndex()) {
             val meta =
-                fc.yamlContent?.let { parseYamlMetaFromContent(it, "$dir@${fc.commitSha.take(8)}") } ?: EMPTY_META
+                fc.yamlContent?.let { parseYamlMetaFromContent(it, "$key@${fc.commitSha.take(8)}") } ?: EMPTY_META
             metas += meta
             revisions += ProposalRevision(
                 projectId = projectId,
                 proposalId = proposalId,
                 revisionIndex = index,
-                title = meta.title ?: dir.substringAfterLast('/'),
+                title = meta.title ?: titleFallback,
                 createdAt = fc.committedAt,
                 content = fc.body,
                 implementedAtVersion = meta.implementedAtVersion,
@@ -353,9 +348,11 @@ class KepMapper(
         }
 
         // Topic: prefer the yaml's owning-sig (most descriptive once stripped of the "sig-"
-        // prefix); fall back to the dir's penultimate segment, which always exists.
+        // prefix). Fallback: pick the `sig-*` segment from the key (or provider-aws).
         val topic = metas.firstNotNullOfOrNull { it.owningSig }?.removePrefix("sig-")
-            ?: dir.substringBeforeLast('/').substringAfterLast('/').removePrefix("sig-")
+            ?: key.split('/').firstOrNull { it.startsWith("sig-") }?.removePrefix("sig-")
+            ?: key.removePrefix("keps/").substringBefore('/', "").takeIf { it.isNotEmpty() }
+            ?: throw AssertionError("All topic fallbacks failed for path: $key")
 
         val proposal = Proposal(
             projectId = projectId,
@@ -649,12 +646,6 @@ class KepMapper(
             return if (leadingNumber !in TEMPLATE_KEP_NUMBERS) leadingNumber else null
         }
         return null
-    }
-
-    private fun String.proposalIdFromDir(): String? {
-        val last = substringAfterLast('/', "")
-        val match = LEADING_KEP_NUMBER_REGEX.find(last) ?: return null
-        return match.groupValues[1]
     }
 
     private data class RawCommit(

@@ -18,7 +18,9 @@ class KeepCommitsCollector(private val ctx: ScrapeContext) {
     suspend fun run(limit: Int? = null) {
         RepoMirror(KeepScraper.OWNER, KeepScraper.REPO, ctx.reposDir).use { mirror ->
             mirror.ensureUpToDate()
-            val paths = mirror.listPathsAtHead { it.startsWith("proposals/") && it.endsWith(".md") }
+            val paths = mirror.listPathsAtHead {
+                it.startsWith("proposals/") && it.endsWith(".md") && !it.endsWith("TEMPLATE.md")
+            }
             log.info("KEEP commits phase: discovered {} proposal paths at HEAD", paths.size)
             CommitsCollector(
                 client = ctx.client,

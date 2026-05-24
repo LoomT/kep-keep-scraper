@@ -205,18 +205,17 @@ class KeepMapper(
     }
 
     private fun mapProposals(): List<ProposalGroup> {
-        val proposalGroupedCommits = readJsonlObjects(normalizedDir, "keep-proposal-revisions")
-            .keepLatestScrapesBy { it.getJsonString("path") + ":" + it.getJsonString("commit_sha") }
-            .sortedBy { it.getJsonString("committed_at") }
-            .groupBy { it.getJsonString("path") }
+        val proposalGroupedCommits = RevisionGrouping
+            .readGroupedByHeadPath(normalizedDir, "keep-proposal-revisions")
             .filterNot { it.key.contains("TEMPLATE.md") }
-            .map { (path, jsons) ->
-                path to jsons.mapIndexed { index, json ->
+            .map { (headPath, jsons) ->
+                headPath to jsons.mapIndexed { index, json ->
                     val parsed = try {
-                        json.getJsonString("content_text").extractProposalTextMetaData(path.proposalPathToId(), index)
+                        json.getJsonString("content_text")
+                            .extractProposalTextMetaData(headPath.proposalPathToId(), index)
                     } catch (e: Throwable) {
                         throw AssertionError(
-                            "Failed to parse proposal meta in $path (commit index $index, sha=${
+                            "Failed to parse proposal meta in $headPath (commit index $index, sha=${
                                 runCatching { json.getJsonString("commit_sha").take(8) }.getOrDefault("?")
                             }): ${e.message}",
                             e,
@@ -230,11 +229,11 @@ class KeepMapper(
                 }
             }
 
-        // Resolve final proposal_ids up-front. Multiple paths can share the same bare id
-        // (data collision — e.g. KEEP-0412 is used by two distinct proposal files); each
+        // Resolve final proposal_ids up-front. Multiple HEAD paths can share the same bare
+        // id (data collision — e.g. KEEP-0412 is used by two distinct proposal files); each
         // variant gets a `-0`/`-1`/... suffix so the (project_id, proposal_id) PK stays
         // unique. The bare id remains searchable via [proposalId.substringBefore('-')].
-        val pathToFinalProposalId: Map<String, String> = run {
+        val headPathToFinalProposalId: Map<String, String> = run {
             val map = mutableMapOf<String, String>()
             for ((bareId, group) in proposalGroupedCommits.groupBy { it.first.proposalPathToId() }) {
                 if (group.size == 1) {
@@ -244,8 +243,8 @@ class KeepMapper(
                         "KEEP-{} proposal_id collision: {} variants — suffixing as {}-0..{}-{}",
                         bareId, group.size, bareId, bareId, group.size - 1,
                     )
-                    group.sortedBy { it.first }.forEachIndexed { idx, (path, _) ->
-                        map[path] = "$bareId-$idx"
+                    group.sortedBy { it.first }.forEachIndexed { idx, (headPath, _) ->
+                        map[headPath] = "$bareId-$idx"
                     }
                 }
             }
@@ -253,19 +252,17 @@ class KeepMapper(
         }
 
         return proposalGroupedCommits.map { proposalCommits ->
-            val topics = proposalCommits.second.mapNotNull { it.proposalData.topic }
-                .ifEmpty {
-                    // decide on a general topic based on if it's an stdlib proposal or a regular one
-                    if (proposalCommits.first.contains("proposals/stdlib/KEEP-"))
-                        listOf("Standard Library API proposal")
-                    else
-                        listOf("Design proposal")
-                }
-            val proposalId = pathToFinalProposalId.getValue(proposalCommits.first)
-            assert(topics.distinct().size == 1) {
-                "Topic should not change across revisions in $proposalId, got ${topics.distinct()} (count=${topics.size})"
+            val topics = proposalCommits.second.mapNotNull { it.proposalData.topic }.distinct()
+
+            val proposalId = headPathToFinalProposalId.getValue(proposalCommits.first)
+
+            if (topics.size > 1) {
+                log.warn("Proposal {} had multiple topics: {}", proposalId, topics)
             }
-            val topic = topics.distinct().single()
+
+            val topic = topics.lastOrNull()
+                ?: if (proposalCommits.first.contains("proposals/stdlib/KEEP-")) "Standard Library API proposal"
+                else "Design proposal"
 
             val authorNames = proposalCommits.second.flatMap { it.proposalData.authors }
             if (authorNames.isEmpty()) log.warn("Author is missing in $proposalId")
@@ -334,10 +331,10 @@ class KeepMapper(
                 }
 
             val proposalDiscussionIds = proposalCommits.second.mapNotNull { it.proposalData.discussionId }.distinct()
-            assert(proposalDiscussionIds.size <= 1) {
-                "Proposal $proposalId has multiple discussions: $proposalDiscussionIds"
+            if (proposalDiscussionIds.size > 1) {
+                log.warn("Proposal {} had multiple discussions: {}", proposalId, proposalDiscussionIds)
             }
-            val discussionId = proposalDiscussionIds.singleOrNull()
+            val discussionId = proposalDiscussionIds.lastOrNull()
 
             val proposalPrIds = proposalCommits.second.mapNotNull { it.proposalData.prId }.distinct()
             assert(proposalPrIds.size <= 1) {
@@ -609,6 +606,7 @@ class KeepMapper(
             k.contains("stable") -> "accepted"
             k.contains("implemented") -> "accepted"
             k.contains("experimental") -> "accepted"
+            k.contains("beta") -> "accepted"
             k == "accepted" || k.startsWith("accepted ") -> "accepted"
             k == "approved" || k.startsWith("approved ") -> "accepted"
             k == "published" || k.startsWith("published ") -> "accepted"
@@ -631,7 +629,7 @@ class KeepMapper(
             // review", and the plain "Review".
             k.contains("in progress") -> "review"
             k.contains("in design") -> "review"
-            k.contains("discussion") || k.contains("discussing") -> "review"
+            k.contains("discussion") || k.contains("discussing") || k.contains("discussed") -> "review"
             k.contains("review") -> "review"
             k.contains("under consideration") -> "review"
             k.contains("working on") -> "review" // "Working on the implementation"
