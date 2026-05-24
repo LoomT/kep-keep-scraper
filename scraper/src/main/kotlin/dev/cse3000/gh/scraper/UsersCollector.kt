@@ -1,6 +1,7 @@
 package dev.cse3000.gh.scraper
 
 import dev.cse3000.gh.client.GithubClient
+import dev.cse3000.gh.concurrent.parallelFetch
 import dev.cse3000.gh.io.JsonlSink
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
@@ -29,6 +30,7 @@ import java.nio.file.Path
 class UsersCollector(
     private val client: GithubClient,
     private val sink: JsonlSink,
+    private val concurrency: Int = 8,
 ) {
     private val log = LoggerFactory.getLogger(UsersCollector::class.java)
 
@@ -67,16 +69,19 @@ class UsersCollector(
         val effective = if (limit != null) logins.take(limit) else logins.toList()
         var processed = 0
         var skipped404 = 0
-        for (login in effective) {
-            if (fetchOne(outStream, login)) processed++ else skipped404++
-            val total = processed + skipped404
-            if (total % 25 == 0) {
-                log.info(
-                    "Users progress: {}/{} processed ({} skipped 404, rate-limit remaining: {})",
-                    total, effective.size, skipped404, client.rateLimiter.remainingSnapshot,
-                )
+        // Collect step is single-threaded — Flow guarantees serial emission to the
+        // collector — so unsynchronized counter increments are safe here.
+        parallelFetch(effective, concurrency) { login -> fetchOne(outStream, login) }
+            .collect { (_, ok) ->
+                if (ok) processed++ else skipped404++
+                val total = processed + skipped404
+                if (total % 25 == 0) {
+                    log.info(
+                        "Users progress: {}/{} processed ({} skipped 404, rate-limit remaining: {})",
+                        total, effective.size, skipped404, client.rateLimiter.remainingSnapshot,
+                    )
+                }
             }
-        }
         log.info(
             "Users phase done: {} fetched, {} skipped (404)",
             processed, skipped404,

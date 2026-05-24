@@ -1,6 +1,7 @@
 package dev.cse3000.gh.scraper
 
 import dev.cse3000.gh.client.GithubClient
+import dev.cse3000.gh.concurrent.parallelFetch
 import dev.cse3000.gh.io.JsonlSink
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
@@ -29,6 +30,7 @@ import java.nio.file.Path
 class OrgsCollector(
     private val client: GithubClient,
     private val sink: JsonlSink,
+    private val concurrency: Int = 8,
 ) {
     private val log = LoggerFactory.getLogger(OrgsCollector::class.java)
 
@@ -49,11 +51,15 @@ class OrgsCollector(
         val effectiveUsers = if (limit != null) userLogins.take(limit) else userLogins
         log.info("Orgs phase: {} user(s) to query for memberships (tag={})", effectiveUsers.size, tag)
 
+        // Phase 1: fetch /users/{login}/orgs in parallel; accumulate distinct org logins
+        // from all responses. The collect block runs single-threaded so the
+        // `orgLogins` set and counters don't need synchronization.
         val orgLogins = sortedSetOf<String>()
         var processedUsers = 0
         var skippedUserOrgs404 = 0
-        for (login in effectiveUsers) {
-            val orgsForUser = fetchUserOrgs(userOrgsStream, login)
+        parallelFetch(effectiveUsers, concurrency) { login ->
+            fetchUserOrgs(userOrgsStream, login)
+        }.collect { (_, orgsForUser) ->
             if (orgsForUser == null) {
                 skippedUserOrgs404++
             } else {
@@ -83,10 +89,13 @@ class OrgsCollector(
             orgLogins.size, processedUsers, skippedUserOrgs404,
         )
 
+        // Phase 2: fetch /orgs/{org} per discovered org login, also in parallel.
         var processedOrgs = 0
         var skippedOrgs404 = 0
-        for (orgLogin in orgLogins) {
-            if (fetchOrg(orgsStream, orgLogin)) processedOrgs++ else skippedOrgs404++
+        parallelFetch(orgLogins.toList(), concurrency) { orgLogin ->
+            fetchOrg(orgsStream, orgLogin)
+        }.collect { (_, ok) ->
+            if (ok) processedOrgs++ else skippedOrgs404++
             val total = processedOrgs + skippedOrgs404
             if (total % 25 == 0) {
                 log.info(

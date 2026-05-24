@@ -2,14 +2,9 @@ package dev.cse3000.gh.scraper
 
 import dev.cse3000.gh.cache.SeenShas
 import dev.cse3000.gh.client.GithubClient
+import dev.cse3000.gh.concurrent.parallelFetch
 import dev.cse3000.gh.git.RepoMirror
 import dev.cse3000.gh.io.JsonlSink
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import org.eclipse.jgit.lib.Repository
@@ -102,26 +97,22 @@ class CommitsCollector internal constructor(
         }
 
         var emitted = 0
-        coroutineScope {
-            toFetch.asFlow()
-                .map { sha -> sha to runCatching { fetchCommit(sha) }.getOrNull() }
-                .buffer(concurrency)
-                .flowOn(Dispatchers.IO)
-                .collect { (sha, obj) ->
-                    if (obj != null) {
-                        sink.emit("$repoTag-commits", obj, mapOf("repo" to slug))
-                        seenShas.add(slug, sha)
-                        emitted++
-                        if (emitted % 100 == 0) {
-                            log.info(
-                                "Commits progress: {}/{} fetched (rate-limit remaining={})",
-                                emitted, toFetch.size, rateLimitSnapshot(),
-                            )
-                        }
-                    } else {
-                        log.warn("Failed to fetch commit {}/{}", slug, sha.take(8))
-                    }
+        parallelFetch(toFetch, concurrency) { sha ->
+            runCatching { fetchCommit(sha) }.getOrNull()
+        }.collect { (sha, obj) ->
+            if (obj != null) {
+                sink.emit("$repoTag-commits", obj, mapOf("repo" to slug))
+                seenShas.add(slug, sha)
+                emitted++
+                if (emitted % 100 == 0) {
+                    log.info(
+                        "Commits progress: {}/{} fetched (rate-limit remaining={})",
+                        emitted, toFetch.size, rateLimitSnapshot(),
+                    )
                 }
+            } else {
+                log.warn("Failed to fetch commit {}/{}", slug, sha.take(8))
+            }
         }
         log.info("Commits phase done: {}/{} new commits emitted", emitted, toFetch.size)
     }
