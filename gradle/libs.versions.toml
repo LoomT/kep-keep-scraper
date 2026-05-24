@@ -15,6 +15,8 @@ jgit = "7.6.0.202603022253-r"
 sqliteJdbc = "3.53.1.0"
 dataframe = "1.0.0-Beta5"
 kandy = "0.8.4"
+junit = "6.1.0"
+assertj = "3.27.7"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -40,6 +42,11 @@ sqliteJdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 dataframe = { module = "org.jetbrains.kotlinx:dataframe", version.ref = "dataframe" }
 kandyLetsPlot = { module = "org.jetbrains.kotlinx:kandy-lets-plot", version.ref = "kandy" }
 
+junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher" }
+assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+kotlinxCoroutinesTest = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+
 # Libraries can be bundled together for easier import
 [bundles]
 kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
@@ -51,6 +58,7 @@ ktorClient = [
     "ktorClientAuth",
     "ktorSerializationJson",
 ]
+testing = ["junitJupiter", "assertjCore", "kotlinxCoroutinesTest"]
 
 [plugins]
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

@@ -10,7 +10,8 @@ dependencies {
     api(libs.slf4jApi)
     api(libs.jgit)
     runtimeOnly(libs.logback)
-    testImplementation(kotlin("test"))
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
 application {

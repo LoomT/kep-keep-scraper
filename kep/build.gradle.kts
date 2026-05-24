@@ -6,6 +6,8 @@ plugins {
 
 dependencies {
     implementation(projects.scraper)
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
 application {

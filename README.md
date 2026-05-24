@@ -345,8 +345,9 @@ contains the logic for mapping raw data from `data/normalized/*.jsonl` to the co
 ## Build
 
 ```sh
-./gradlew build         # compile all modules
-./gradlew clean         # wipe build outputs
+./gradlew build # compile all modules
+./gradlew test  # run all tests
+./gradlew clean # wipe build outputs
 ```
 
 ## Notes

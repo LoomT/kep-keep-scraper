@@ -8,6 +8,8 @@ dependencies {
     implementation(projects.scraper)
     implementation(libs.kaml)
     implementation(libs.sqliteJdbc)
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
 application {
