@@ -73,7 +73,7 @@ class OrgsCollector(
                 }
             }
             processedUsers++
-            if (processedUsers % 25 == 0) {
+            if (processedUsers % 100 == 0) {
                 log.info(
                     "User-orgs progress: {}/{} users processed ({} skipped 404, distinct orgs so far: {}, rate-limit remaining: {})",
                     processedUsers,
@@ -97,7 +97,7 @@ class OrgsCollector(
         }.collect { (_, ok) ->
             if (ok) processedOrgs++ else skippedOrgs404++
             val total = processedOrgs + skippedOrgs404
-            if (total % 25 == 0) {
+            if (total % 100 == 0) {
                 log.info(
                     "Orgs progress: {}/{} processed ({} skipped 404, rate-limit remaining: {})",
                     total, orgLogins.size, skippedOrgs404, client.rateLimiter.remainingSnapshot,

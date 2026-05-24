@@ -69,13 +69,11 @@ class UsersCollector(
         val effective = if (limit != null) logins.take(limit) else logins.toList()
         var processed = 0
         var skipped404 = 0
-        // Collect step is single-threaded — Flow guarantees serial emission to the
-        // collector — so unsynchronized counter increments are safe here.
         parallelFetch(effective, concurrency) { login -> fetchOne(outStream, login) }
             .collect { (_, ok) ->
                 if (ok) processed++ else skipped404++
                 val total = processed + skipped404
-                if (total % 25 == 0) {
+                if (total % 100 == 0) {
                     log.info(
                         "Users progress: {}/{} processed ({} skipped 404, rate-limit remaining: {})",
                         total, effective.size, skipped404, client.rateLimiter.remainingSnapshot,
