@@ -1,0 +1,64 @@
+stages:
+  - build
+  - test
+
+variables:
+  PROJECT_DIR: rq3-kep-keep
+
+.run-rules: &run-rules
+  - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  - if: $CI_PIPELINE_SOURCE == "web"
+
+.gradle-base:
+  image: eclipse-temurin:25-jdk
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/$PROJECT_DIR/.gradle"
+    GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
+  before_script:
+    - cd "$PROJECT_DIR"
+    - chmod +x ./gradlew
+  cache:
+    key:
+      files:
+        # Paths in cache:key:files are resolved from the repo root.
+        - rq3-kep-keep/gradle/wrapper/gradle-wrapper.properties
+        - rq3-kep-keep/settings.gradle.kts
+      prefix: rq3-kep-keep
+    paths:
+      - rq3-kep-keep/.gradle/
+      - rq3-kep-keep/**/build/
+      - rq3-kep-keep/buildSrc/build/
+
+build:
+  extends: .gradle-base
+  stage: build
+  rules: *run-rules
+  script:
+    # `assemble` builds all modules' jars without running tests.
+    - ./gradlew --no-daemon assemble
+  artifacts:
+    paths:
+      - rq3-kep-keep/**/build/libs/
+      - rq3-kep-keep/**/build/classes/
+      - rq3-kep-keep/buildSrc/build/
+    expire_in: 1 day
+
+test:
+  extends: .gradle-base
+  stage: test
+  needs: [ "build" ]
+  rules: *run-rules
+  script:
+    # `test` aggregates tests across all subprojects in a multi-module build.
+    - ./gradlew --no-daemon test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        # Each Gradle subproject has its own build/test-results dir; the glob picks them all up.
+        - rq3-kep-keep/**/build/test-results/test/TEST-*.xml
+    paths:
+      - rq3-kep-keep/**/build/reports/tests/
+    expire_in: 1 week
