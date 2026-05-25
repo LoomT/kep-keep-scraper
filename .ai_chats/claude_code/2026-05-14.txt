@@ -1,0 +1,2335 @@
+❯ Extract issue and pr comment mapping from KeepMapper to CommonMapper,
+  implement these mappings in KepMapper, where each proposal id corresponds to  
+  the same issue number, and each pr coressponds to an issue if the title of    
+  the PR contains the KEP id like "KEP-1234", "kep 2345", etc.                  
+
+  Searched for 3 patterns, read 3 files, listed 1 directory (ctrl+o to expand)
+
+● Bash(ls C:\Users\kajus\IdeaProjects\cse3000-monorepo\rq3-kep-keep\loader\src\m
+      ain\kotlin\dev\cse3000\loader\)
+  ⎿  Error: Exit code 2
+     ls: cannot access 'C:UserskajusIdeaProjectscse3000-monoreporq3-kep-keepload
+     ersrcmainkotlindevcse3000loader\': No such file or directory
+
+  Searched for 3 patterns, read 4 files (ctrl+o to expand)
+
+● Bash(head -c 200 "C:\Users\kajus\IdeaProjects\cse3000-monorepo\rq3-kep-keep\da
+      ta\normalized\kep-pr-review-comments.jsonl" | python -c "import sys, json;
+       line = sys.s…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 1, in <module>
+         import sys, json; line = sys.stdin.read(); 
+     print(list(json.loads(line[:line.rfind('}')+1]).keys())[:20])
+                                                               
+     ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+       File "C:\Users\kajus\AppData\Local\Programs\Python\Python314\Lib\json\__i
+     nit__.py", line 352, in loads
+         return _default_decoder.decode(s)
+                ~~~~~~~~~~~~~~~~~~~~~~~^^^
+       File "C:\Users\kajus\AppData\Local\Programs\Python\Python314\Lib\json\dec
+     oder.py", line 345, in decode
+         obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+
+     … +4 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json…)
+  ⎿  ['url', 'pull_request_review_id', 'id', 'node_id', 'diff_hunk', 'path'
+     , 'commit_id', 'original_commit_id', 'user', 'body', 'created_at', 'up
+     dated_at', 'html_url', 'pull_request_url', '_links', 'reactions', 'sta
+     … +3 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json…)
+  ⎿  keys: ['url', 'id', 'node_id', 'html_url', 'diff_url', 'patch_url', 'i
+     ssue_url', 'number', 'state', 'locked', 'title', 'user', 'body', 'crea
+     ted_at', 'updated_at', 'closed_at', 'merged_at', 'merge_commit_sha', '
+     … +9 lines (ctrl+o to expand)
+
+● Let me explore the data structure to understand what's available.
+
+● Bash(python -c "
+      import json…)
+  ⎿  9 | Directory with 1.3 features added
+     13 | Fix broken links to kubernetes designs in README
+     6 | Update ISSUE_TEMPLATE.md
+     … +32 lines (ctrl+o to expand)
+
+● Bash(python -c "
+      import json, re…)
+  ⎿  1545 | KEP 617 | Add to KEP 617: Enhance KEP artifacts
+     1694 | KEP 1693 | KEP 1693: Warning mechanism for use of deprecated AP
+     Is
+     … +18 lines (ctrl+o to expand)
+
+● Now I have enough understanding. Let me extract the comment mapping logic to
+  CommonMapper and implement it in KepMapper.
+
+● Now extracting the mappers into CommonMapper. The functions need stream names
+  and a resolveGHLogin lambda since both mappers manage GH-login → person-id
+  state differently.
+
+● Write(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 183 lines, removed 1 line
+       1  package dev.cse3000.loader
+       2  
+       3 +import kotlinx.serialization.json.JsonObject                   
+       4 +import kotlinx.serialization.json.int                          
+       5 +import kotlinx.serialization.json.intOrNull                    
+       6 +import kotlinx.serialization.json.jsonObject                   
+       7 +import kotlinx.serialization.json.jsonPrimitive                
+       8 +import kotlinx.serialization.json.long                         
+       9 +import kotlinx.serialization.json.longOrNull                   
+      10  import org.slf4j.LoggerFactory
+      11  import java.nio.file.Path
+      12  
+     ...
+       50  
+       51              return relatedProposals to danglingRelated.size
+       52          }
+       53 +                                                              
+       54 +        /**                                                   
+       55 +         * Maps a project's tracking-issue + issue-comments st
+          +reams to a Comment chain per                                  
+       56 +         * proposal. The issue body itself becomes a root [Com
+          +ment]; each comment is parented                               
+       57 +         * to the previous in `created_at` order.             
+       58 +         *                                                    
+       59 +         * [issueNumberToProposalId] resolves a GitHub issue n
+          +umber to its proposal_id (or                                  
+       60 +         * null to skip). Each project chooses its own rule — 
+          +e.g., KEEP zero-pads issue                                    
+       61 +         * numbers to 4 digits, KEP uses the bare number.     
+       62 +         *                                                    
+       63 +         * [resolveGHLogin] is a project-specific callback tha
+          +t interns a GH login into a                                   
+       64 +         * person_id (with whatever side-effects the project t
+          +racks, like adding to                                         
+       65 +         * personByGHLogin). It's called for the issue author 
+          +and every comment author.                                     
+       66 +         */                                                   
+       67 +        fun mapIssueComments(                                 
+       68 +            normalizedDir: Path,                              
+       69 +            issuesStream: String,                             
+       70 +            issueCommentsStream: String,                      
+       71 +            projectId: Int,                                   
+       72 +            commentIds: IdAllocator,                          
+       73 +            issueNumberToProposalId: (Int) -> String?,        
+       74 +            resolveGHLogin: (String) -> Long,                 
+       75 +        ): List<Comment> {                                    
+       76 +            val issueToIssueComments = readJsonlObjects(normal
+          +izedDir, issueCommentsStream)                                 
+       77 +                .keepLatestScrapesBy { it["id"]!!.jsonPrimitiv
+          +e.long }                                                      
+       78 +                .groupBy { it.getJsonString("_issue").toInt() 
+          +}                                                             
+       79 +                                                              
+       80 +            return readJsonlObjects(normalizedDir, issuesStrea
+          +m)                                                            
+       81 +                .keepLatestScrapesBy { it["id"]!!.jsonPrimitiv
+          +e.long }                                                      
+       82 +                .mapNotNull { issue ->                        
+       83 +                    val issueNumber = issue["number"]!!.jsonPr
+          +imitive.int                                                   
+       84 +                    val proposalId = issueNumberToProposalId(i
+          +ssueNumber) ?: return@mapNotNull null                         
+       85 +                                                              
+       86 +                    val rootComment = Comment(                
+       87 +                        commentId = commentIds.nextId(),      
+       88 +                        authorId = resolveGHLogin(issue["user"
+          +]!!.jsonObject.getJsonString("login")),                       
+       89 +                        projectId = projectId,                
+       90 +                        proposalId = proposalId,              
+       91 +                        commentOnCommentId = null,            
+       92 +                        createdAt = issue.getJsonString("creat
+          +ed_at"),                                                      
+       93 +                        content = issue.getJsonStringOrNull("b
+          +ody").orEmpty(),                                              
+       94 +                    )                                         
+       95 +                                                              
+       96 +                    val issueComments = issueToIssueComments[i
+          +ssueNumber] ?: emptyList()                                    
+       97 +                    issueComments.sortedBy { it.getJsonString(
+          +"created_at") }                                               
+       98 +                        .runningFold(rootComment) { previous, 
+          +commentJson ->                                                
+       99 +                            Comment(                          
+      100 +                                commentId = commentIds.nextId(
+          +),                                                            
+      101 +                                authorId = resolveGHLogin(comm
+          +entJson["user"]!!.jsonObject.getJsonString("login")),         
+      102 +                                projectId = projectId,        
+      103 +                                proposalId = proposalId,      
+      104 +                                commentOnCommentId = previous.
+          +commentId,                                                    
+      105 +                                createdAt = commentJson.getJso
+          +nString("created_at"),                                        
+      106 +                                content = commentJson.getJsonS
+          +tringOrNull("body").orEmpty(),                                
+      107 +                            )                                 
+      108 +                        }                                     
+      109 +                }                                             
+      110 +                .flatten()                                    
+      111 +                .toList()                                     
+      112 +        }                                                     
+      113 +                                                              
+      114 +        /**                                                   
+      115 +         * Maps every proposal-linked PR's body + comments int
+          +o a Comment chain.                                            
+      116 +         *                                                    
+      117 +         * Structure:                                         
+      118 +         * - **Root**: the PR's `body` itself (from [pullsStre
+          +am]), parented to nothing.                                    
+      119 +         * - **Top-level comments** (regular PR conversation c
+          +omments + review-comments with                                
+      120 +         *   no `in_reply_to_id`) chain to one another by `cre
+          +ated_at`; the first chains to                                 
+      121 +         *   the PR body. Replies are skipped over when comput
+          +ing the chain — the next                                      
+      122 +         *   top-level comment links to the previous *top-leve
+          +l* comment.                                                   
+      123 +         * - **Replies** (`in_reply_to_id != null`, only on re
+          +view comments — issue-style                                   
+      124 +         *   comments don't have replies in GitHub's model) ha
+          +ng off their parent via the                                   
+      125 +         *   `in_reply_to_id` value, looked up against an in-f
+          +light ghId → allocated id map.                                
+      126 +         *   GitHub guarantees `in_reply_to_id` always referen
+          +ces an earlier-created                                        
+      127 +         *   same-PR comment, so a created_at sort processes p
+          +arents before their replies.                                  
+      128 +         *   Orphan replies (parent not in the scrape) are dro
+          +pped with a WARN.                                             
+      129 +         *                                                    
+      130 +         * [prToProposalMap] is the project-specific PR-number
+          + → proposal_id mapping. PRs                                   
+      131 +         * absent from this map (and any comments scoped to th
+          +em) are ignored.                                              
+      132 +         *                                                    
+      133 +         * [prIssueCommentsStream] is the "conversation tab" c
+          +omments (issuecomments). Pass                                 
+      134 +         * an empty string-typed but nonexistent stream name w
+          +hen a project has no such                                     
+      135 +         * stream — `readJsonlObjects` returns an empty sequen
+          +ce and the function degrades                                  
+      136 +         * cleanly. [prReviewCommentsStream] is the "review/di
+          +ff tab" comments (with                                        
+      137 +         * `in_reply_to_id`).                                 
+      138 +         */                                                   
+      139 +        fun mapPrComments(                                    
+      140 +            normalizedDir: Path,                              
+      141 +            pullsStream: String,                              
+      142 +            prIssueCommentsStream: String,                    
+      143 +            prReviewCommentsStream: String,                   
+      144 +            projectId: Int,                                   
+      145 +            commentIds: IdAllocator,                          
+      146 +            prToProposalMap: Map<Int, String>,                
+      147 +            resolveGHLogin: (String) -> Long,                 
+      148 +        ): List<Comment> {                                    
+      149 +            val prBodies: Map<Int, JsonObject> = readJsonlObje
+          +cts(normalizedDir, pullsStream)                               
+      150 +                .keepLatestScrapesBy { it["id"]!!.jsonPrimitiv
+          +e.long }                                                      
+      151 +                .filter { it["number"]!!.jsonPrimitive.int in 
+          +prToProposalMap.keys }                                        
+      152 +                .associateBy { it["number"]!!.jsonPrimitive.in
+          +t }                                                           
+      153 +                                                              
+      154 +            val regularComments = readJsonlObjects(normalizedD
+          +ir, prIssueCommentsStream)                                    
+      155 +                .keepLatestScrapesBy { it["id"]!!.jsonPrimitiv
+          +e.long }                                                      
+      156 +                .filter { it["_issue"]!!.jsonPrimitive.int in 
+          +prToProposalMap.keys }                                        
+      157 +                                                              
+      158 +            val reviewComments = readJsonlObjects(normalizedDi
+          +r, prReviewCommentsStream)                                    
+      159 +                .keepLatestScrapesBy { it["id"]!!.jsonPrimitiv
+          +e.long }                                                      
+      160 +                .filter { it["_pr"]!!.jsonPrimitive.int in prT
+          +oProposalMap.keys }                                           
+      161 +                                                              
+      162 +            val byPr: Map<Int, List<JsonObject>> = (regularCom
+          +ments + reviewComments).groupBy {                             
+      163 +                it["_pr"]?.jsonPrimitive?.intOrNull           
+      164 +                    ?: it["_issue"]?.jsonPrimitive?.intOrNull 
+      165 +                    ?: error("PR comment row has neither _pr n
+          +or _issue meta: $it")                                         
+      166 +            }                                                 
+      167 +                                                              
+      168 +            return prToProposalMap.flatMap { (prNumber, propos
+          +alId) ->                                                      
+      169 +                val prJson = prBodies[prNumber]               
+      170 +                if (prJson == null) {                         
+      171 +                    log.warn(                                 
+      172 +                        "PR #{} not found in {}; skipping comm
+          +ent chain for proposal {}",                                   
+      173 +                        prNumber, pullsStream, proposalId,    
+      174 +                    )                                         
+      175 +                    return@flatMap emptyList()                
+      176 +                }                                             
+      177 +                                                              
+      178 +                val rootComment = Comment(                    
+      179 +                    commentId = commentIds.nextId(),          
+      180 +                    authorId = resolveGHLogin(prJson["user"]!!
+          +.jsonObject.getJsonString("login")),                          
+      181 +                    projectId = projectId,                    
+      182 +                    proposalId = proposalId,                  
+      183 +                    commentOnCommentId = null,                
+      184 +                    createdAt = prJson.getJsonString("created_
+          +at"),                                                         
+      185 +                    content = prJson.getJsonStringOrNull("body
+          +").orEmpty(),                                                 
+      186 +                )                                             
+      187 +                                                              
+      188 +                val sorted = byPr[prNumber].orEmpty().sortedBy
+          + { it.getJsonString("created_at") }                           
+      189 +                val ghIdToAllocated = mutableMapOf<Long, Long>
+          +()                                                            
+      190 +                val emitted = mutableListOf<Comment>()        
+      191 +                var lastTopLevel = rootComment                
+      192 +                                                              
+      193 +                for (json in sorted) {                        
+      194 +                    val ghId = json["id"]!!.jsonPrimitive.long
+      195 +                    val parentGhId = json["in_reply_to_id"]?.j
+          +sonPrimitive?.longOrNull                                      
+      196 +                    val parentAllocated: Long? = if (parentGhI
+          +d == null) {                                                  
+      197 +                        lastTopLevel.commentId                
+      198 +                    } else {                                  
+      199 +                        ghIdToAllocated[parentGhId] ?: run {  
+      200 +                            log.warn(                         
+      201 +                                "Dropping review comment {} in
+          + PR #{}: in_reply_to_id={} not in same PR's data",            
+      202 +                                ghId, prNumber, parentGhId,   
+      203 +                            )                                 
+      204 +                            null                              
+      205 +                        }                                     
+      206 +                    }                                         
+      207 +                    if (parentAllocated == null) continue     
+      208 +                                                              
+      209 +                    val comment = Comment(                    
+      210 +                        commentId = commentIds.nextId(),      
+      211 +                        authorId = resolveGHLogin(json["user"]
+          +!!.jsonObject.getJsonString("login")),                        
+      212 +                        projectId = projectId,                
+      213 +                        proposalId = proposalId,              
+      214 +                        commentOnCommentId = parentAllocated, 
+      215 +                        createdAt = json.getJsonString("create
+          +d_at"),                                                       
+      216 +                        content = json.getJsonStringOrNull("bo
+          +dy").orEmpty(),                                               
+      217 +                    )                                         
+      218 +                    ghIdToAllocated[ghId] = comment.commentId 
+      219 +                    emitted += comment                        
+      220 +                    // Only top-level comments advance the cha
+          +in anchor. Replies hang off their                             
+      221 +                    // own parent and don't displace the chain
+          + pointer.                                                     
+      222 +                    if (parentGhId == null) lastTopLevel = com
+          +ment                                                          
+      223 +                }                                             
+      224 +                                                              
+      225 +                listOf(rootComment) + emitted                 
+      226 +            }                                                 
+      227 +        }                                                     
+      228      }
+       47 -}                                                             
+      229   No newline at end of file
+      230 +}                                                             
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Now rewire KeepMapper to call into CommonMapper for the two extracted
+  mappings, and drop the local duplicates.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Added 19 lines, removed 101 lines
+      875          discussionToProposalsMap: Map<Int, Set<String>>,
+      876          prToProposalMap: Map<Int, String>
+      877      ): List<Comment> {
+      878 -        val issueComments = mapIssueComments(proposalIntIds)  
+      878 +        val issueComments = CommonMapper.mapIssueComments(    
+      879 +            normalizedDir = normalizedDir,                    
+      880 +            issuesStream = "keep-issues",                     
+      881 +            issueCommentsStream = "keep-issue-comments",      
+      882 +            projectId = projectId,                            
+      883 +            commentIds = commentIds,                          
+      884 +            issueNumberToProposalId = { n -> if (n in proposal
+          +IntIds) n.toString().padStart(4, '0') else null },            
+      885 +            resolveGHLogin = ::resolveGHLogin,                
+      886 +        )                                                     
+      887          val discussionComments = mapDiscussions(discussionToPr
+           oposalsMap)
+      880 -        val reviewThreadComments = mapPrReviewThreadComments(p
+          -rToProposalMap)                                               
+      888 +        val reviewThreadComments = CommonMapper.mapPrComments(
+      889 +            normalizedDir = normalizedDir,                    
+      890 +            pullsStream = "keep-pulls",                       
+      891 +            prIssueCommentsStream = "keep-pr-issuecomments",  
+      892 +            prReviewCommentsStream = "keep-pr-review-comments"
+          +,                                                             
+      893 +            projectId = projectId,                            
+      894 +            commentIds = commentIds,                          
+      895 +            prToProposalMap = prToProposalMap,                
+      896 +            resolveGHLogin = ::resolveGHLogin,                
+      897 +        )                                                     
+      898          return issueComments + discussionComments + reviewThre
+           adComments
+      899      }
+      900  
+      884 -                                                              
+      885 -    /**                                                       
+      886 -     * Maps every proposal-linked PR's body + comments into a 
+          -Comment chain.                                                
+      887 -     *                                                        
+      888 -     * Structure:                                             
+      889 -     * - **Root**: the PR's `body` itself (from `keep-pulls.js
+          -onl`), parented to nothing.                                   
+      890 -     * - **Top-level comments** (regular PR conversation comme
+          -nts + review-comments with                                    
+      891 -     *   no `in_reply_to_id`) chain to one another by `created
+          -_at`; the first chains to                                     
+      892 -     *   the PR body. Replies are skipped over when computing 
+          -the chain — the next                                          
+      893 -     *   top-level comment links to the previous *top-level* c
+          -omment.                                                       
+      894 -     * - **Replies** (`in_reply_to_id != null`, only on review
+          - comments — issue-style                                       
+      895 -     *   comments don't have replies in GitHub's model) hang o
+          -ff their parent via the                                       
+      896 -     *   `in_reply_to_id` value, looked up against an in-fligh
+          -t ghId → allocated id map.                                    
+      897 -     *   GitHub guarantees `in_reply_to_id` always references 
+          -an earlier-created                                            
+      898 -     *   same-PR comment, so a created_at sort processes paren
+          -ts before their replies.                                      
+      899 -     *   Orphan replies (parent not in the scrape) are dropped
+          - with a WARN.                                                 
+      900 -     */                                                       
+      901 -    private fun mapPrReviewThreadComments(prToProposalMap: Map
+          -<Int, String>): List<Comment> {                               
+      902 -        val prBodies: Map<Int, JsonObject> = readJsonlObjects(
+          -normalizedDir, "keep-pulls")                                  
+      903 -            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.lo
+          -ng }                                                          
+      904 -            .filter { it["number"]!!.jsonPrimitive.int in prTo
+          -ProposalMap.keys }                                            
+      905 -            .associateBy { it["number"]!!.jsonPrimitive.int } 
+      906 -                                                              
+      907 -        val regularComments = readJsonlObjects(normalizedDir, 
+          -"keep-pr-issuecomments")                                      
+      908 -            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.lo
+          -ng }                                                          
+      909 -            .filter { it["_issue"]!!.jsonPrimitive.int in prTo
+          -ProposalMap.keys }                                            
+      910 -                                                              
+      911 -        val reviewComments = readJsonlObjects(normalizedDir, "
+          -keep-pr-review-comments")                                     
+      912 -            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.lo
+          -ng }                                                          
+      913 -            .filter { it["_pr"]!!.jsonPrimitive.int in prToPro
+          -posalMap.keys }                                               
+      914 -                                                              
+      915 -        val byPr: Map<Int, List<JsonObject>> = (regularComment
+          -s + reviewComments).groupBy {                                 
+      916 -            it["_pr"]?.jsonPrimitive?.intOrNull               
+      917 -                ?: it["_issue"]?.jsonPrimitive?.intOrNull     
+      918 -                ?: error("PR comment row has neither _pr nor _
+          -issue meta: $it")                                             
+      919 -        }                                                     
+      920 -                                                              
+      921 -        return prToProposalMap.flatMap { (prNumber, proposalId
+          -) ->                                                          
+      922 -            val prJson = prBodies[prNumber]                   
+      923 -            if (prJson == null) {                             
+      924 -                log.warn(                                     
+      925 -                    "PR #{} not found in keep-pulls.jsonl; ski
+          -pping comment chain for proposal {}",                         
+      926 -                    prNumber,                                 
+      927 -                    proposalId                                
+      928 -                )                                             
+      929 -                return@flatMap emptyList()                    
+      930 -            }                                                 
+      931 -                                                              
+      932 -            val rootComment = Comment(                        
+      933 -                commentId = commentIds.nextId(),              
+      934 -                authorId = resolveGHLogin(prJson["user"]!!.jso
+          -nObject.getJsonString("login")),                              
+      935 -                projectId = projectId,                        
+      936 -                proposalId = proposalId,                      
+      937 -                commentOnCommentId = null,                    
+      938 -                createdAt = prJson.getJsonString("created_at")
+          -,                                                             
+      939 -                content = prJson.getJsonStringOrNull("body").o
+          -rEmpty(),                                                     
+      940 -            )                                                 
+      941 -                                                              
+      942 -            val sorted = byPr[prNumber].orEmpty().sortedBy { i
+          -t.getJsonString("created_at") }                               
+      943 -            val ghIdToAllocated = mutableMapOf<Long, Long>()  
+      944 -            val emitted = mutableListOf<Comment>()            
+      945 -            var lastTopLevel = rootComment                    
+      946 -                                                              
+      947 -            for (json in sorted) {                            
+      948 -                val ghId = json["id"]!!.jsonPrimitive.long    
+      949 -                val parentGhId = json["in_reply_to_id"]?.jsonP
+          -rimitive?.longOrNull                                          
+      950 -                val parentAllocated: Long? = if (parentGhId ==
+          - null) {                                                      
+      951 -                    lastTopLevel.commentId                    
+      952 -                } else {                                      
+      953 -                    ghIdToAllocated[parentGhId] ?: run {      
+      954 -                        log.warn(                             
+      955 -                            "Dropping review comment {} in PR 
+          -#{}: in_reply_to_id={} not in same PR's data",                
+      956 -                            ghId, prNumber, parentGhId,       
+      957 -                        )                                     
+      958 -                        null                                  
+      959 -                    }                                         
+      960 -                }                                             
+      961 -                if (parentAllocated == null) continue         
+      962 -                                                              
+      963 -                val comment = Comment(                        
+      964 -                    commentId = commentIds.nextId(),          
+      965 -                    authorId = resolveGHLogin(json["user"]!!.j
+          -sonObject.getJsonString("login")),                            
+      966 -                    projectId = projectId,                    
+      967 -                    proposalId = proposalId,                  
+      968 -                    commentOnCommentId = parentAllocated,     
+      969 -                    createdAt = json.getJsonString("created_at
+          -"),                                                           
+      970 -                    content = json.getJsonStringOrNull("body")
+          -.orEmpty(),                                                   
+      971 -                )                                             
+      972 -                ghIdToAllocated[ghId] = comment.commentId     
+      973 -                emitted += comment                            
+      974 -                // Only top-level comments advance the chain a
+          -nchor. Replies hang off their                                 
+      975 -                // own parent and don't displace the chain poi
+          -nter.                                                         
+      976 -                if (parentGhId == null) lastTopLevel = comment
+      977 -            }                                                 
+      978 -                                                              
+      979 -            listOf(rootComment) + emitted                     
+      980 -        }                                                     
+      981 -    }                                                         
+      982 -                                                              
+      901      private fun mapDiscussions(discussionToProposalsMap: Map<I
+           nt, Set<String>>): List<Comment> {
+      902          val discussionCommentJsons = readJsonlObjects(normaliz
+           edDir, "keep-discussion-comments")
+      903              .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.co
+           ntent }
+
+● Now remove the local mapIssueComments from KeepMapper (still present further
+  down).
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Removed 46 lines
+      1006          return prLinks[1].toInt()
+      1007      }
+      1008  
+      1009 -    private fun mapIssueComments(proposalIntIds: Set<Int>): L
+           -ist<Comment> {                                               
+      1010 -        val issueToIssueComments = readJsonlObjects(normalize
+           -dDir, "keep-issue-comments")                                 
+      1011 -            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.l
+           -ong }                                                        
+      1012 -            .groupBy { it.getJsonString("_issue").toInt() }  
+      1013 -                                                             
+      1014 -        return readJsonlObjects(normalizedDir, "keep-issues")
+      1015 -            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.l
+           -ong }                                                        
+      1016 -            .filter {                                        
+      1017 -                it["number"]!!.jsonPrimitive.int in proposalI
+           -ntIds                                                        
+      1018 -            }.flatMap { issue ->                             
+      1019 -                val issueNumber = issue["number"]!!.jsonPrimi
+           -tive.int                                                     
+      1020 -                val proposalId = issueNumber.toString().padSt
+           -art(4, '0')                                                  
+      1021 -                val rootContent = issue.getJsonStringOrNull("
+           -body").orEmpty()                                             
+      1022 -                val rootCreatedAt = issue.getJsonString("crea
+           -ted_at")                                                     
+      1023 -                val rootLogin = issue["user"]!!.jsonObject.ge
+           -tJsonString("login")                                         
+      1024 -                val rootAuthorId = resolveGHLogin(rootLogin) 
+      1025 -                                                             
+      1026 -                val rootComment = Comment(                   
+      1027 -                    commentIds.nextId(),                     
+      1028 -                    rootAuthorId,                            
+      1029 -                    projectId,                               
+      1030 -                    proposalId,                              
+      1031 -                    null,                                    
+      1032 -                    rootCreatedAt,                           
+      1033 -                    rootContent,                             
+      1034 -                )                                            
+      1035 -                                                             
+      1036 -                val issueComments = issueToIssueComments[issu
+           -eNumber] ?: emptyList()                                      
+      1037 -                                                             
+      1038 -                issueComments.sortedBy { it.getJsonString("cr
+           -eated_at") }                                                 
+      1039 -                    .runningFold(rootComment) { previous, com
+           -mentJson ->                                                  
+      1040 -                        val login = commentJson["user"]!!.jso
+           -nObject.getJsonString("login")                               
+      1041 -                        Comment(                             
+      1042 -                            commentId = commentIds.nextId(), 
+      1043 -                            authorId = resolveGHLogin(login),
+      1044 -                            projectId = projectId,           
+      1045 -                            proposalId = proposalId,         
+      1046 -                            commentOnCommentId = previous.com
+           -mentId,                                                      
+      1047 -                            createdAt = commentJson.getJsonSt
+           -ring("created_at"),                                          
+      1048 -                            content = commentJson.getJsonStri
+           -ngOrNull("body").orEmpty(),                                  
+      1049 -                        )                                    
+      1050 -                    }                                        
+      1051 -                                                             
+      1052 -            }.toList()                                       
+      1053 -    }                                                        
+      1054 -                                                             
+      1009      companion object {
+      1010          private val DISCUSSION_URL_REGEX =
+      1011              Regex("""https://github\.com/Kotlin/KEEP/discussi
+            ons/(\d+)""")
+
+  Read 1 file (ctrl+o to expand)
+
+● Now wire the comment mapping into KepMapper. The PR→proposal mapping is built
+  by regex-matching PR titles against KEP-NNNN/kep NNNN forms.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 2 lines
+      2  
+      3  import com.charleskorn.kaml.*
+      4  import kotlinx.serialization.json.JsonObject
+      5 +import kotlinx.serialization.json.jsonPrimitive                 
+      6 +import kotlinx.serialization.json.long                          
+      7  import org.slf4j.LoggerFactory
+      8  import java.nio.file.Path
+      9  
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      33      private val normalizedDir: Path,
+      34      private val personIds: IdAllocator,
+      35      @Suppress("unused") private val organisationIds: IdAllocato
+          r,
+      36 -    @Suppress("unused") private val commentIds: IdAllocator,   
+      36 +    private val commentIds: IdAllocator,                       
+      37  ) {
+      38      private val personByGHLogin = mutableMapOf<String, Long>()
+      39  
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 36 lines, removed 1 line
+      52          val rawRelated = proposalGroups.flatMap { it.relatedPro
+          posals }
+      53          val (relatedProposals, danglingRelatedCount) = CommonMa
+          pper.processRelatedProposals(rawRelated, proposalIds)
+      54  
+      55 +        // KEP proposal_ids are bare numbers (e.g. "9", "2451")
+         +. The corresponding GitHub                                     
+      56 +        // tracking issue, when present, has the same number. I
+         +ds that don't parse as                                         
+      57 +        // integers are skipped (none expected today, but cheap
+         + insurance).                                                   
+      58 +        val proposalIdByInt: Map<Int, String> = proposals      
+      59 +            .mapNotNull { p -> p.proposalId.toIntOrNull()?.let 
+         +{ it to p.proposalId } }                                       
+      60 +            .toMap()                                           
+      61 +                                                               
+      62 +        val prToProposalMap = buildPrToProposalMap(proposalIdBy
+         +Int)                                                           
+      63 +                                                               
+      64 +        val issueComments = CommonMapper.mapIssueComments(     
+      65 +            normalizedDir = normalizedDir,                     
+      66 +            issuesStream = "kep-issues",                       
+      67 +            issueCommentsStream = "kep-issue-comments",        
+      68 +            projectId = projectId,                             
+      69 +            commentIds = commentIds,                           
+      70 +            issueNumberToProposalId = { n -> proposalIdByInt[n]
+         + },                                                            
+      71 +            resolveGHLogin = ::resolveGHLogin,                 
+      72 +        )                                                      
+      73 +        val prComments = CommonMapper.mapPrComments(           
+      74 +            normalizedDir = normalizedDir,                     
+      75 +            pullsStream = "kep-pulls",                         
+      76 +            prIssueCommentsStream = "kep-pr-issuecomments",    
+      77 +            prReviewCommentsStream = "kep-pr-review-comments", 
+      78 +            projectId = projectId,                             
+      79 +            commentIds = commentIds,                           
+      80 +            prToProposalMap = prToProposalMap,                 
+      81 +            resolveGHLogin = ::resolveGHLogin,                 
+      82 +        )                                                      
+      83 +        val comments = issueComments + prComments              
+      84 +                                                               
+      85 +        // Built after mapIssueComments/mapPrComments so any lo
+         +gin first seen in a comment                                    
+      86 +        // gets a person row + username emitted here.          
+      87          val persons = personByGHLogin.entries.map { (_, id) -> 
+          Person(personId = id, fullName = null) }
+      88          val personUsernames = personByGHLogin.entries.map { (lo
+          gin, id) ->
+      89              PersonUsername(personId = id, domain = "github.com"
+          , username = login, realName = null)
+     ...
+      105              proposalRevisionAuthors = proposalGroups.flatMap {
+            it.authorRevisions },
+      106              stageHistory = proposalGroups.flatMap { it.stages 
+           },
+      107              relatedProposals = relatedProposals,
+      108 +            comments = comments,                              
+      109          )
+      110  
+      111          log.info(
+       79 -            "KEP resolver counts: proposals={}, revisions={}, 
+          -persons={}, related={}, dangling-related-dropped={}",         
+      112 +            "KEP resolver counts: proposals={}, revisions={}, 
+          +persons={}, related={}, dangling-related-dropped={}, " +      
+      113 +                    "PRs-linked-by-title={}, comments={}",    
+      114              rows.proposals.size, rows.proposalRevisions.size, 
+           rows.persons.size,
+      115              rows.relatedProposals.size, danglingRelatedCount,
+      116 +            prToProposalMap.size, rows.comments.size,         
+      117          )
+      118          log.info(
+      119              "KEP status mapping: rawStatus -> normalizedStatus
+            distinct pairs = {}",
+
+● Now add the buildPrToProposalMap helper and the title regex.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 31 lines
+      478          personByGHLogin.getOrPut(login) { personIds.nextId() }
+      479  
+      480      /**
+      481 +     * Scans `kep-pulls.jsonl` and links each PR to a proposal
+          + when the PR title references                                 
+      482 +     * a known KEP number (e.g. "KEP-1234", "kep 2345", "KEP12
+          +34"). Only the first match per                                
+      483 +     * title is used; PRs whose referenced KEP isn't in our pr
+          +oposal set are skipped.                                       
+      484 +     *                                                        
+      485 +     * The duplicate prevention is "first match per PR number 
+          +wins" — `kep-pulls.jsonl` is                                  
+      486 +     * pre-deduped to one row per PR via [keepLatestScrapesBy]
+          +, so collisions are between                                   
+      487 +     * different PRs pointing at the same proposal, which is f
+          +ine: many-PRs → one-proposal                                  
+      488 +     * is the expected fan-in.                                
+      489 +     */                                                       
+      490 +    private fun buildPrToProposalMap(proposalIdByInt: Map<Int,
+          + String>): Map<Int, String> {                                 
+      491 +        var titled = 0                                        
+      492 +        val map = mutableMapOf<Int, String>()                 
+      493 +        readJsonlObjects(normalizedDir, "kep-pulls")          
+      494 +            .keepLatestScrapesBy { it["id"]!!.jsonPrimitive.lo
+          +ng }                                                          
+      495 +            .forEach { pull ->                                
+      496 +                val title = pull.getJsonStringOrNull("title") 
+          +?: return@forEach                                             
+      497 +                val match = KEP_IN_TITLE_REGEX.find(title) ?: 
+          +return@forEach                                                
+      498 +                titled++                                      
+      499 +                val kepNumber = match.groupValues[1].toIntOrNu
+          +ll() ?: return@forEach                                        
+      500 +                val proposalId = proposalIdByInt[kepNumber] ?:
+          + return@forEach                                               
+      501 +                val prNumber = pull["number"]!!.jsonPrimitive.
+          +int                                                           
+      502 +                map.putIfAbsent(prNumber, proposalId)         
+      503 +            }                                                 
+      504 +        log.info(                                             
+      505 +            "KEP PR→proposal title match: {} PRs mentioned a K
+          +EP number; {} resolved to a known proposal",                  
+      506 +            titled, map.size,                                 
+      507 +        )                                                     
+      508 +        return map                                            
+      509 +    }                                                         
+      510 +                                                              
+      511 +    /**                                                       
+      512       * Pulls a bare proposal_id (e.g. `"2451"`) out of a `repl
+           aces` / `superseded-by` /
+      513       * `see-also` reference. KEP yaml authors use these fields
+            very loosely — values range
+      514       * from clean repo-relative paths to external URLs to lite
+           ral `"TBD"`.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 6 lines
+      582      )
+      583  
+      584      companion object {
+      585 +        /**                                                   
+      586 +         * Matches a `KEP-NNNN` / `kep NNNN` / `KEP1234` refer
+          +ence inside free-form text                                    
+      587 +         * (case-insensitive). Used to attribute a PR to a pro
+          +posal via its title.                                          
+      588 +         */                                                   
+      589 +        private val KEP_IN_TITLE_REGEX = Regex("""(?i)\bkep[\s
+          +-]?(\d{1,5})\b""")                                            
+      590 +                                                              
+      591          /** Matches an in-repo KEP directory reference inside 
+           a free-text yaml value. */
+      592          private val KEPS_PATH_REGEX = Regex("""/?keps/[^/\s]+/
+           ([^\s)]+(?:/README\.md)?)""")
+      593  
+
+● Let me build the loader module to confirm everything compiles.
+
+● Bash(./gradlew :loader:compileKotlin 2>&1 | tail -40)
+  ⎿  > Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+     > Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+     > Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+     … +24 lines (ctrl+o to expand)
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 1 line
+      2  
+      3  import com.charleskorn.kaml.*
+      4  import kotlinx.serialization.json.JsonObject
+      5 +import kotlinx.serialization.json.int                           
+      6  import kotlinx.serialization.json.jsonPrimitive
+      7  import kotlinx.serialization.json.long
+      8  import org.slf4j.LoggerFactory
+
+● Bash(./gradlew :loader:compileKotlin 2>&1 | tail -20)
+  ⎿  WARNING: A restricted method in java.lang.System has been called
+     WARNING: java.lang.System::load has been called by net.rubygrapefruit.
+     platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/U
+     … +14 lines (ctrl+o to expand)
+
+● Build passes. Let me also run the loader end-to-end to confirm the runtime
+  behavior on real data.
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2 2>&1 | tail -60)
+  ⎿       ^
+     12:40:12.970 WARN  d.c.loader.KepMapper - yaml parse failed for keps/s
+     ig-release/3000-artifact-distribution@f960d6f2: while parsing a block
+     … +67 lines (ctrl+o to expand)
+
+● KEP data has deleted-user PRs/comments where user is JsonNull. KEEP doesn't
+  have these so the crash is new with KEP. Add a small helper and use it.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\utils.kt)
+  ⎿  Added 11 lines
+      42      val prim = element as? JsonPrimitive ?: return null
+      43      if (!prim.isString) return null
+      44      return prim.content
+      45 +}                                                              
+      46 +                                                               
+      47 +/**                                                            
+      48 + * Reads `[key].login` for a GitHub user-shaped object (`{ "log
+         +in": ..., "id": ..., ... }`),                                  
+      49 + * returning "ghost" when the user is `null` or the login is mi
+         +ssing — matching GitHub's                                      
+      50 + * own convention for deleted accounts. Lets author resolution 
+         +stay total without sprinkling                                  
+      51 + * null checks at every call site.                             
+      52 + */                                                            
+      53 +internal fun JsonObject.getLoginOrGhost(key: String): String { 
+      54 +    val obj = this[key] as? JsonObject ?: return "ghost"       
+      55 +    return obj.getJsonStringOrNull("login") ?: "ghost"         
+      56  }
+      57   No newline at end of file
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      85  
+      86                      val rootComment = Comment(
+      87                          commentId = commentIds.nextId(),
+      88 -                        authorId = resolveGHLogin(issue["user"]
+         -!!.jsonObject.getJsonString("login")),                         
+      88 +                        authorId = resolveGHLogin(issue.getLogi
+         +nOrGhost("user")),                                             
+      89                          projectId = projectId,
+      90                          proposalId = proposalId,
+      91                          commentOnCommentId = null,
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+       98                          .runningFold(rootComment) { previous, 
+           commentJson ->
+       99                              Comment(
+      100                                  commentId = commentIds.nextId(
+           ),
+      101 -                                authorId = resolveGHLogin(comm
+          -entJson["user"]!!.jsonObject.getJsonString("login")),         
+      101 +                                authorId = resolveGHLogin(comm
+          +entJson.getLoginOrGhost("user")),                             
+      102                                  projectId = projectId,
+      103                                  proposalId = proposalId,
+      104                                  commentOnCommentId = previous.
+           commentId,
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      177  
+      178                  val rootComment = Comment(
+      179                      commentId = commentIds.nextId(),
+      180 -                    authorId = resolveGHLogin(prJson["user"]!!
+          -.jsonObject.getJsonString("login")),                          
+      180 +                    authorId = resolveGHLogin(prJson.getLoginO
+          +rGhost("user")),                                              
+      181                      projectId = projectId,
+      182                      proposalId = proposalId,
+      183                      commentOnCommentId = null,
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      208  
+      209                      val comment = Comment(
+      210                          commentId = commentIds.nextId(),
+      211 -                        authorId = resolveGHLogin(json["user"]
+          -!!.jsonObject.getJsonString("login")),                        
+      211 +                        authorId = resolveGHLogin(json.getLogi
+          +nOrGhost("user")),                                            
+      212                          projectId = projectId,
+      213                          proposalId = proposalId,
+      214                          commentOnCommentId = parentAllocated,
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Removed 1 line
+      3  import kotlinx.serialization.json.JsonObject
+      4  import kotlinx.serialization.json.int
+      5  import kotlinx.serialization.json.intOrNull
+      6 -import kotlinx.serialization.json.jsonObject                    
+      6  import kotlinx.serialization.json.jsonPrimitive
+      7  import kotlinx.serialization.json.long
+      8  import kotlinx.serialization.json.longOrNull
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2 2>&1 | tail -40)
+  ⎿      title: Artifact Promotion and Distribution Policy and Procedure
+         ^
+     expected <block end>, but found '<block mapping start>' (is the indent
+     … +66 lines (ctrl+o to expand)
+
+● End-to-end run succeeds: KEP now produces 43,868 comments (PR review comments
+  — there's no kep-issues.jsonl so issue comments contribute zero) and 1688 PRs
+  were linked via title regex. Total Comment rows = 47,552.
+
+● Summary
+
+  CommonMapper (loader/src/main/kotlin/dev/cse3000/loader/CommonMapper.kt)
+  - Added two parameterized static methods mapIssueComments and mapPrComments.
+  They take stream names (so KEEP and KEP can each pass their own keep-*/kep-*
+  files), an issueNumberToProposalId lookup, and a resolveGHLogin callback (so
+  each project keeps its own person-id bookkeeping).
+  - Behavior preserved verbatim from the old KeepMapper code, including the PR
+  review-thread reply chaining via in_reply_to_id.
+
+  KeepMapper (KeepMapper.kt)
+  - Local mapIssueComments and mapPrReviewThreadComments deleted; mapComments
+  now delegates to CommonMapper. KEEP-specific issue→proposal logic (4-digit
+  zero-pad) lives in the lambda.
+
+  KepMapper (KepMapper.kt)
+  - Wired up issue comments (bare-number issue → bare-number proposal id) and PR
+   comments. The KEP→PR mapping is built by buildPrToProposalMap scanning
+  kep-pulls.jsonl titles with regex (?i)\bkep[\s-]?(\d{1,5})\b — matches
+  KEP-1234, KEP 1234, KEP1234, kep-1234, etc.
+  - Persons are now emitted after comment mapping so any login first seen in a
+  comment gets a row.
+
+  utils.kt
+  - Added JsonObject.getLoginOrGhost(key) — returns "ghost" for deleted GitHub
+  accounts (user: null), matching GitHub's own convention. KEP data has these;
+  KEEP didn't.
+
+✻ Baked for 9m 31s
+
+❯ extract from KEEP and implement in KEP logic for resolving emails to gh       
+  logins from github commits, and real/full names                               
+
+● Let me track the new task and read the current KeepMapper to extract the
+  methods.
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+● Now extract those three methods + CommitEnrichment into CommonMapper.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 14 lines
+       6  
+       7  private val log = LoggerFactory.getLogger(CommonMapper::class.j
+          ava)
+       8  
+       9 +/**                                                            
+      10 + * Most-frequent git author/committer `name` observed alongside
+         + each email, and the                                           
+      11 + * same tally keyed by GitHub login. Produced by [CommonMapper.
+         +populateCommitterAuthorEmails];                                
+      12 + * fed into the persons / personUsernames row build to choose a
+         + display name when the                                         
+      13 + * GitHub profile doesn't supply one.                          
+      14 + */                                                            
+      15 +data class CommitEnrichment(                                   
+      16 +    val gitNameByEmail: Map<String, String>,                   
+      17 +    val gitFullNameByLogin: Map<String, String>,               
+      18 +)                                                              
+      19 +                                                               
+      20  class CommonMapper(
+      21      private val projectId: Int,
+      22      private val normalizedDir: Path,
+     ...
+      25      private val commentIds: IdAllocator,
+      26  ) {
+      27      companion object {
+      28 +        /** Git author/committer role keys present on every Git
+         +Hub commit object. */                                          
+      29 +        private val COMMIT_ROLES = listOf("author", "committer"
+         +)                                                              
+      30 +                                                               
+      31          fun processRelatedProposals(
+      32              rawRelated: List<RelatedProposal>,
+      33              proposalIds: Set<String>
+
+● Now add the three extracted methods at the end of the companion object, just
+  before its closing brace.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 146 lines
+      233                  listOf(rootComment) + emitted
+      234              }
+      235          }
+      236 +                                                              
+      237 +        /**                                                   
+      238 +         * Populates [personByEmail] from self-declared emails
+          + in `<usersStream>.jsonl`                                     
+      239 +         * (one row per GitHub user). Only users whose `login`
+          + is already known                                             
+      240 +         * (i.e. in [personByGHLogin]) are considered — this i
+          +s a *post-resolution                                          
+      241 +         * enrichment*, not an entry point for new persons. Sh
+          +ould be called after                                          
+      242 +         * the personByGHLogin set is finalised (proposal auth
+          +ors + comment authors                                         
+      243 +         * + commit-derived logins).                          
+      244 +         */                                                   
+      245 +        fun populateUserEmails(                               
+      246 +            normalizedDir: Path,                              
+      247 +            usersStream: String,                              
+      248 +            personByGHLogin: Map<String, Long>,               
+      249 +            personByEmail: MutableMap<String, Long>,          
+      250 +        ) {                                                   
+      251 +            readJsonlObjects(normalizedDir, usersStream)      
+      252 +                .keepLatestScrapesBy { it.getJsonString("login
+          +") }                                                          
+      253 +                .filter { it.getJsonString("login") in personB
+          +yGHLogin.keys }                                               
+      254 +                .filter { it.getJsonStringOrNull("email") != n
+          +ull }                                                         
+      255 +                .forEach { userJson ->                        
+      256 +                    val login = userJson.getJsonString("login"
+          +)                                                             
+      257 +                    val email = userJson.getJsonString("email"
+          +)                                                             
+      258 +                    personByEmail[email] = personByGHLogin.get
+          +Value(login)                                                  
+      259 +                }                                             
+      260 +        }                                                     
+      261 +                                                              
+      262 +        /**                                                   
+      263 +         * Walks one or more `*-commits.jsonl` streams (e.g. `
+          +keep-commits`,                                                
+      264 +         * `keep-pr-commits` for KEEP — or `kep-commits`, `kep
+          +-pr-commits` for KEP) and,                                    
+      265 +         * for every commit role (author / committer) where Gi
+          +tHub successfully resolved                                    
+      266 +         * the git email to a GitHub `login`, links the git `n
+          +ame` and `email` to that                                      
+      267 +         * login's person row.                                
+      268 +         *                                                    
+      269 +         * - **Email → person**: added to [personByEmail] unde
+          +r the login's id, so the                                      
+      270 +         *   build-persons loop emits a `PersonUsername(domain
+          +="email", username=<email>,                                   
+      271 +         *   real_name=<most-popular name for this email>)` ro
+          +w attached to the same person                                 
+      272 +         *   as the github.com username row. First link wins f
+          +or the *email→person* mapping —                               
+      273 +         *   once an email is claimed by a login, a later comm
+          +it with a different login on                                  
+      274 +         *   the same email is ignored. (Names are tallied ind
+          +ependently and the popular                                    
+      275 +         *   pick wins regardless of which commit linked the e
+          +mail first.)                                                  
+      276 +         * - **Per-email name tally** and **per-login name tal
+          +ly**: built locally and reduced                               
+      277 +         *   to the most-frequent name. Multiple variants are 
+          +kept so we don't lock to a                                    
+      278 +         *   one-off typo — e.g., "Mike Smith" (50 commits) wi
+          +ns over "Michael Smith" (1).                                  
+      279 +         *                                                    
+      280 +         * Commits where GitHub couldn't match the email back 
+          +to a login (`author`/`committer`                              
+      281 +         * is `null` in the JSON) are skipped.                
+      282 +         *                                                    
+      283 +         * [resolveGHLogin] is invoked for every commit's GH l
+          +ogin, so a login first observed                               
+      284 +         * in a commit (rather than in the proposal text / com
+          +ments) gets a new person id                                   
+      285 +         * here. The conflict diagnostic uses [personByGHLogin
+          +] for a reverse lookup; pass                                  
+      286 +         * the same backing map that [resolveGHLogin] mutates 
+          +so it stays in sync.                                          
+      287 +         */                                                   
+      288 +        fun populateCommitterAuthorEmails(                    
+      289 +            normalizedDir: Path,                              
+      290 +            commitStreams: List<String>,                      
+      291 +            personByGHLogin: Map<String, Long>,               
+      292 +            personByEmail: MutableMap<String, Long>,          
+      293 +            resolveGHLogin: (String) -> Long,                 
+      294 +        ): CommitEnrichment {                                 
+      295 +            val nameCountsByEmail = mutableMapOf<String, Mutab
+          +leMap<String, Int>>()                                         
+      296 +            val nameCountsByLogin = mutableMapOf<String, Mutab
+          +leMap<String, Int>>()                                         
+      297 +            var processed = 0                                 
+      298 +            var roleRecordsWithLogin = 0                      
+      299 +            var newEmailLinks = 0                             
+      300 +            for (stream in commitStreams) {                   
+      301 +                for (commit in readJsonlObjects(normalizedDir,
+          + stream)) {                                                   
+      302 +                    processed++                               
+      303 +                    val gitCommit = commit["commit"] as? JsonO
+          +bject ?: continue                                             
+      304 +                    for (role in COMMIT_ROLES) {              
+      305 +                        val gitInfo = gitCommit[role] as? Json
+          +Object ?: continue                                            
+      306 +                        val ghLogin = (commit[role] as? JsonOb
+          +ject)                                                         
+      307 +                            ?.getJsonStringOrNull("login")    
+      308 +                            ?.takeIf { it.isNotBlank() } ?: co
+          +ntinue                                                        
+      309 +                        val gitName = gitInfo.getJsonStringOrN
+          +ull("name")                                                   
+      310 +                            ?.replace(".", " ") // some names 
+          +use a dot instead of space                                    
+      311 +                            ?.takeIf { it.isNotBlank() }      
+      312 +                        val gitEmail = gitInfo.getJsonStringOr
+          +Null("email")                                                 
+      313 +                            ?.takeIf { it.isNotBlank() }?.lowe
+          +rcase()                                                       
+      314 +                                                              
+      315 +                        roleRecordsWithLogin++                
+      316 +                        val personId = resolveGHLogin(ghLogin)
+      317 +                                                              
+      318 +                        if (personByEmail[gitEmail] != null &&
+          + personByEmail[gitEmail] != personId) {                       
+      319 +                            val existingPersonId = personByEma
+          +il[gitEmail]!!                                                
+      320 +                            val existingLogin = personByGHLogi
+          +n.entries.find { it.value == existingPersonId }?.key          
+      321 +                            log.warn(                         
+      322 +                                """                           
+      323 +                                Duplicate email-to-login mappi
+          +ng for $gitEmail:                                             
+      324 +                                    - existing: $existingLogin
+      325 +                                    - new: $ghLogin           
+      326 +                                Skipping commit: $commit      
+      327 +                                """                           
+      328 +                            )                                 
+      329 +                        }                                     
+      330 +                                                              
+      331 +                        if (gitEmail != null && personByEmail.
+          +putIfAbsent(gitEmail, personId) == null) {                    
+      332 +                            newEmailLinks++                   
+      333 +                        }                                     
+      334 +                        if (gitEmail != null && gitName != nul
+          +l) {                                                          
+      335 +                            nameCountsByEmail.getOrPut(gitEmai
+          +l) { mutableMapOf() }                                         
+      336 +                                .merge(gitName, 1) { a, b -> a
+          + + b }                                                        
+      337 +                        }                                     
+      338 +                        if (gitName != null) {                
+      339 +                            nameCountsByLogin.getOrPut(ghLogin
+          +) { mutableMapOf() }                                          
+      340 +                                .merge(gitName, 1) { a, b -> a
+          + + b }                                                        
+      341 +                        }                                     
+      342 +                    }                                         
+      343 +                }                                             
+      344 +            }                                                 
+      345 +                                                              
+      346 +            val gitNameByEmail: Map<String, String> = nameCoun
+          +tsByEmail.mapValues { (_, counts) ->                          
+      347 +                counts.maxByOrNull { it.value }!!.key         
+      348 +            }                                                 
+      349 +            val gitFullNameByLogin: Map<String, String> = name
+          +CountsByLogin.mapValues { (_, counts) ->                      
+      350 +                counts.maxByOrNull { it.value }!!.key         
+      351 +            }                                                 
+      352 +                                                              
+      353 +            log.info(                                         
+      354 +                "Commit enrichment ({}): scanned {} commits ({
+          +} author/committer records with login); " +                   
+      355 +                        "newly linked {} emails to GH logins; 
+          +{} logins now have a git name tally",                         
+      356 +                commitStreams.joinToString("+"),              
+      357 +                processed, roleRecordsWithLogin, newEmailLinks
+          +, gitFullNameByLogin.size,                                    
+      358 +            )                                                 
+      359 +            return CommitEnrichment(gitNameByEmail, gitFullNam
+          +eByLogin)                                                     
+      360 +        }                                                     
+      361 +                                                              
+      362 +        /**                                                   
+      363 +         * Associates GitHub logins from [personByGHLogin] wit
+          +h their self-declared                                         
+      364 +         * display names from `<usersStream>.jsonl`. Users wit
+          +h blank `name` fields are                                     
+      365 +         * skipped (the fallback in the persons build is the m
+          +ost-frequent git                                              
+      366 +         * author/committer name from [CommitEnrichment.gitFul
+          +lNameByLogin]).                                               
+      367 +         */                                                   
+      368 +        fun ghLoginsToNames(                                  
+      369 +            normalizedDir: Path,                              
+      370 +            usersStream: String,                              
+      371 +            personByGHLogin: Map<String, Long>,               
+      372 +        ): Map<String, String> =                              
+      373 +            readJsonlObjects(normalizedDir, usersStream)      
+      374 +                .keepLatestScrapesBy { it.getJsonString("login
+          +") }                                                          
+      375 +                .filter { it.getJsonString("login") in personB
+          +yGHLogin.keys }                                               
+      376 +                .filterNot { it.getJsonStringOrNull("name").is
+          +NullOrBlank() }                                               
+      377 +                .associate { userJson ->                      
+      378 +                    val login = userJson.getJsonString("login"
+          +)                                                             
+      379 +                    val name = userJson.getJsonString("name") 
+      380 +                    login to name                             
+      381 +                }                                             
+      382      }
+      383  }
+
+● Now remove these methods from KeepMapper and wire it through CommonMapper.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Removed 7 lines
+      23      private val personByName = mutableMapOf<String, Long>()
+      24      private val proposalsByPerson = mutableMapOf<Long, MutableS
+          et<String>>()
+      25  
+      26 -    private data class CommitEnrichment(                       
+      27 -        /** Most-frequent git author/committer `name` seen alon
+         -gside each email. */                                           
+      28 -        val gitNameByEmail: Map<String, String>,               
+      29 -        /** Most-frequent git author/committer `name` seen for 
+         -each GH login. */                                              
+      30 -        val gitFullNameByLogin: Map<String, String>,           
+      31 -    )                                                          
+      32 -                                                               
+      26      private val proposalTextMetaKeysSeen = mutableSetOf<String>
+          ()
+      27  
+      28      fun mapAll(): Rows {
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Added 18 lines, removed 3 lines
+      44          val rawRelated = proposalGroups.flatMap { it.relatedPro
+          posals }
+      45          val (relatedProposals, danglingRelatedCount) = CommonMa
+          pper.processRelatedProposals(rawRelated, proposalIds)
+      46  
+      47 -        populateUserEmails()                                   
+      48 -        val (gitNameByEmail, gitFullNameByLogin) = populateComm
+         -itterAuthorEmails()                                            
+      47 +        CommonMapper.populateUserEmails(                       
+      48 +            normalizedDir = normalizedDir,                     
+      49 +            usersStream = "keep-users",                        
+      50 +            personByGHLogin = personByGHLogin,                 
+      51 +            personByEmail = personByEmail,                     
+      52 +        )                                                      
+      53 +        val (gitNameByEmail, gitFullNameByLogin) = CommonMapper
+         +.populateCommitterAuthorEmails(                                
+      54 +            normalizedDir = normalizedDir,                     
+      55 +            commitStreams = listOf("keep-commits", "keep-pr-com
+         +mits"),                                                        
+      56 +            personByGHLogin = personByGHLogin,                 
+      57 +            personByEmail = personByEmail,                     
+      58 +            resolveGHLogin = ::resolveGHLogin,                 
+      59 +        )                                                      
+      60  
+      50 -        val ghLoginsToNames = ghLoginsToNames()                
+      61 +        val ghLoginsToNames = CommonMapper.ghLoginsToNames(    
+      62 +            normalizedDir = normalizedDir,                     
+      63 +            usersStream = "keep-users",                        
+      64 +            personByGHLogin = personByGHLogin,                 
+      65 +        )                                                      
+      66  
+      67          // === Resolve proposal-meta-text authors (currently in
+           personByName) to GH logins or
+      68          // git emails, but ONLY when the same name appears as a
+           git author/committer on a
+
+● Now delete the local copies in KeepMapper.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Removed 118 lines
+      676      }
+      677  
+      678      /**
+      679 -     * Populates emails in [personByEmail] from existing GitHu
+          -b logins in [personByGHLogin].                                
+      680 -     *                                                        
+      681 -     * Should run after [personByGHLogin] is fully populated. 
+      682 -     */                                                       
+      683 -    private fun populateUserEmails() =                        
+      684 -        readJsonlObjects(normalizedDir, "keep-users")         
+      685 -            .keepLatestScrapesBy { it.getJsonString("login") }
+      686 -            .filter { it.getJsonString("login") in personByGHL
+          -ogin.keys }                                                   
+      687 -            .filter { it.getJsonStringOrNull("email") != null 
+          -}                                                             
+      688 -            .forEach { userJson ->                            
+      689 -                val login = userJson.getJsonString("login")   
+      690 -                val email = userJson.getJsonString("email")   
+      691 -                personByEmail[email] = resolveGHLogin(login)  
+      692 -            }                                                 
+      693 -                                                              
+      694 -    /**                                                       
+      695 -     * Walks `keep-commits.jsonl` and `keep-pr-commits.jsonl` 
+          -and, for every commit role                                    
+      696 -     * (author / committer) where GitHub successfully resolved
+          - the git email to a GitHub                                    
+      697 -     * `login`, links the git `name` and `email` to that login
+          -'s existing person row.                                       
+      698 -     *                                                        
+      699 -     * - **Email → person**: added to [personByEmail] under th
+          -e login's id, so the                                          
+      700 -     *   build-persons loop emits a `PersonUsername(domain="em
+          -ail", username=<email>,                                       
+      701 -     *   real_name=<most-popular name for this email>)` row at
+          -tached to the same person                                     
+      702 -     *   as the github.com username row. First link wins for t
+          -he *email→person* mapping —                                   
+      703 -     *   once an email is claimed by a login, a later commit w
+          -ith a different login on                                      
+      704 -     *   the same email is ignored. (Names are tallied indepen
+          -dently and the popular                                        
+      705 -     *   pick wins regardless of which commit linked the email
+          - first.)                                                      
+      706 -     * - **Per-email name tally** and **per-login name tally**
+          -: built locally and reduced                                   
+      707 -     *   to the most-frequent name. Multiple variants are kept
+          - so we don't lock to a                                        
+      708 -     *   one-off typo — e.g., "Mike Smith" (50 commits) wins o
+          -ver "Michael Smith" (1).                                      
+      709 -     *                                                        
+      710 -     * Commits where GitHub couldn't match the email back to a
+          - login (`author`/`committer`                                  
+      711 -     * is `null` in the JSON) are skipped.                    
+      712 -     */                                                       
+      713 -    private fun populateCommitterAuthorEmails(): CommitEnrichm
+          -ent {                                                         
+      714 -        val nameCountsByEmail = mutableMapOf<String, MutableMa
+          -p<String, Int>>()                                             
+      715 -        val nameCountsByLogin = mutableMapOf<String, MutableMa
+          -p<String, Int>>()                                             
+      716 -        var processed = 0                                     
+      717 -        var roleRecordsWithLogin = 0                          
+      718 -        var newEmailLinks = 0                                 
+      719 -        for (stream in COMMIT_STREAMS) {                      
+      720 -            for (commit in readJsonlObjects(normalizedDir, str
+          -eam)) {                                                       
+      721 -                processed++                                   
+      722 -                val gitCommit = commit["commit"] as? JsonObjec
+          -t ?: continue                                                 
+      723 -                for (role in COMMIT_ROLES) {                  
+      724 -                    val gitInfo = gitCommit[role] as? JsonObje
+          -ct ?: continue                                                
+      725 -                    val ghLogin = (commit[role] as? JsonObject
+          -)                                                             
+      726 -                        ?.getJsonStringOrNull("login")        
+      727 -                        ?.takeIf { it.isNotBlank() } ?: contin
+          -ue                                                            
+      728 -                    val gitName = gitInfo.getJsonStringOrNull(
+          -"name")                                                       
+      729 -                        ?.replace(".", " ") // some names use 
+          -a dot instead of space                                        
+      730 -                        ?.takeIf { it.isNotBlank() }          
+      731 -                    val gitEmail = gitInfo.getJsonStringOrNull
+          -("email")                                                     
+      732 -                        ?.takeIf { it.isNotBlank() }?.lowercas
+          -e()                                                           
+      733 -                                                              
+      734 -                    roleRecordsWithLogin++                    
+      735 -                    val personId = resolveGHLogin(ghLogin)    
+      736 -                                                              
+      737 -                    if (personByEmail[gitEmail] != null && per
+          -sonByEmail[gitEmail] != personId) {                           
+      738 -                        val existingPersonId = personByEmail[g
+          -itEmail]!!                                                    
+      739 -                        val existingLogin = personByGHLogin.en
+          -tries.find { it.value == existingPersonId }?.key              
+      740 -                        log.warn(                             
+      741 -                            """                               
+      742 -                            Duplicate email-to-login mapping f
+          -or $gitEmail:                                                 
+      743 -                                - existing: $existingLogin    
+      744 -                                - new: $ghLogin               
+      745 -                            Skipping commit: $commit          
+      746 -                            """                               
+      747 -                        )                                     
+      748 -                    }                                         
+      749 -                                                              
+      750 -                    if (gitEmail != null && personByEmail.putI
+          -fAbsent(gitEmail, personId) == null) {                        
+      751 -                        newEmailLinks++                       
+      752 -                    }                                         
+      753 -                    if (gitEmail != null && gitName != null) {
+      754 -                        nameCountsByEmail.getOrPut(gitEmail) {
+          - mutableMapOf() }                                             
+      755 -                            .merge(gitName, 1) { a, b -> a + b
+          - }                                                            
+      756 -                    }                                         
+      757 -                    if (gitName != null) {                    
+      758 -                        nameCountsByLogin.getOrPut(ghLogin) { 
+          -mutableMapOf() }                                              
+      759 -                            .merge(gitName, 1) { a, b -> a + b
+          - }                                                            
+      760 -                    }                                         
+      761 -                }                                             
+      762 -            }                                                 
+      763 -        }                                                     
+      764 -                                                              
+      765 -        val gitNameByEmail: Map<String, String> = nameCountsBy
+          -Email.mapValues { (_, counts) ->                              
+      766 -            counts.maxByOrNull { it.value }!!.key             
+      767 -        }                                                     
+      768 -        val gitFullNameByLogin: Map<String, String> = nameCoun
+          -tsByLogin.mapValues { (_, counts) ->                          
+      769 -            counts.maxByOrNull { it.value }!!.key             
+      770 -        }                                                     
+      771 -                                                              
+      772 -        log.info(                                             
+      773 -            "Commit enrichment: scanned {} commits ({} author/
+          -committer records with login); " +                            
+      774 -                    "newly linked {} emails to GH logins; {} l
+          -ogins now have a git name tally",                             
+      775 -            processed, roleRecordsWithLogin, newEmailLinks, gi
+          -tFullNameByLogin.size,                                        
+      776 -        )                                                     
+      777 -        return CommitEnrichment(gitNameByEmail, gitFullNameByL
+          -ogin)                                                         
+      778 -    }                                                         
+      779 -                                                              
+      780 -    /**                                                       
+      781 -     * Associates GitHub logins from [personByGHLogin] with th
+          -eir names from `keep-users.jsonl`.                            
+      782 -     *                                                        
+      783 -     * Should run after [personByGHLogin] is fully populated. 
+      784 -     */                                                       
+      785 -    private fun ghLoginsToNames(): Map<String, String> =      
+      786 -        readJsonlObjects(normalizedDir, "keep-users")         
+      787 -            .keepLatestScrapesBy { it.getJsonString("login") }
+      788 -            .filter { it.getJsonString("login") in personByGHL
+          -ogin.keys }                                                   
+      789 -            .filterNot { it.getJsonStringOrNull("name").isNull
+          -OrBlank() }                                                   
+      790 -            .associate { userJson ->                          
+      791 -                val login = userJson.getJsonString("login")   
+      792 -                val name = userJson.getJsonString("name")     
+      793 -                login to name                                 
+      794 -            }                                                 
+      795 -                                                              
+      796 -    /**                                                       
+      679       * Builds the [Organisation] and [Affiliation] rows from t
+           hree sources:
+      680       *
+      681       * 1. **GitHub org membership** — `keep-user-orgs.jsonl` (
+           one row per user with their
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Removed 2 lines
+      905              Regex("""https://github\.com/Kotlin/KEEP/pull/(\d+
+           )""")
+      906          private val SUPERSEDING_KEEP_REGEX = Regex("""KEEP-(\d
+           {4})""")
+      907  
+      908 -        /** Streams scanned by [populateCommitterAuthorEmails]
+          - for git author/committer info. */                            
+      909 -        private val COMMIT_STREAMS = listOf("keep-commits", "k
+          -eep-pr-commits")                                              
+      908          private val COMMIT_ROLES = listOf("author", "committer
+           ")
+      909      }
+      910  }
+
+● Quick build check before wiring KEP.
+
+● Bash(./gradlew :loader:compileKotlin 2>&1 | tail -15)
+  ⎿  WARNING: Restricted methods will be blocked in a future release unless
+      native access is enabled
+     … +13 lines (ctrl+o to expand)
+
+● Now wire it into KepMapper. Add personByEmail state, call the three new
+  CommonMapper methods, and rebuild the persons+personUsernames lists with full
+  names + email-domain rows.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 1 line
+      37      private val commentIds: IdAllocator,
+      38  ) {
+      39      private val personByGHLogin = mutableMapOf<String, Long>()
+      40 +    private val personByEmail = mutableMapOf<String, Long>()   
+      41  
+      42      /**
+      43       * Slug → bare proposal_id, populated during [mapProposals]
+          . Used to resolve see-also /
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 53 lines, removed 5 lines
+       84          )
+       85          val comments = issueComments + prComments
+       86  
+       87 -        // Built after mapIssueComments/mapPrComments so any l
+          -ogin first seen in a comment                                  
+       88 -        // gets a person row + username emitted here.         
+       89 -        val persons = personByGHLogin.entries.map { (_, id) ->
+          - Person(personId = id, fullName = null) }                     
+       90 -        val personUsernames = personByGHLogin.entries.map { (l
+          -ogin, id) ->                                                  
+       91 -            PersonUsername(personId = id, domain = "github.com
+          -", username = login, realName = null)                         
+       87 +        // Walks kep-commits + kep-pr-commits to (a) attach gi
+          +t emails to existing login-                                   
+       88 +        // anchored persons, (b) pull in any author/committer 
+          +login not yet seen via                                        
+       89 +        // proposals/comments, and (c) pick a most-frequent gi
+          +t name per email/login for                                    
+       90 +        // PersonUsername.real_name / Person.full_name fallbac
+          +k.                                                            
+       91 +        CommonMapper.populateUserEmails(                      
+       92 +            normalizedDir = normalizedDir,                    
+       93 +            usersStream = "kep-users",                        
+       94 +            personByGHLogin = personByGHLogin,                
+       95 +            personByEmail = personByEmail,                    
+       96 +        )                                                     
+       97 +        val (gitNameByEmail, gitFullNameByLogin) = CommonMappe
+          +r.populateCommitterAuthorEmails(                              
+       98 +            normalizedDir = normalizedDir,                    
+       99 +            commitStreams = listOf("kep-commits", "kep-pr-comm
+          +its"),                                                        
+      100 +            personByGHLogin = personByGHLogin,                
+      101 +            personByEmail = personByEmail,                    
+      102 +            resolveGHLogin = ::resolveGHLogin,                
+      103 +        )                                                     
+      104 +        val ghLoginsToNames = CommonMapper.ghLoginsToNames(   
+      105 +            normalizedDir = normalizedDir,                    
+      106 +            usersStream = "kep-users",                        
+      107 +            personByGHLogin = personByGHLogin,                
+      108 +        )                                                     
+      109 +                                                              
+      110 +        // Person rows are emitted once per distinct id. Perso
+          +n.full_name is the user's                                     
+      111 +        // self-declared GitHub `name` when present, otherwise
+          + the most-frequent git                                        
+      112 +        // author/committer name observed in commits. Email-an
+          +chored persons (commit                                        
+      113 +        // authors with a resolved GH login + email) get an ex
+          +tra PersonUsername row                                        
+      114 +        // hung off the same id.                              
+      115 +        val persons = mutableListOf<Person>()                 
+      116 +        val personUsernames = mutableListOf<PersonUsername>() 
+      117 +        val emittedPersonIds = mutableSetOf<Long>()           
+      118 +        fun emitPerson(id: Long, fullName: String?) {         
+      119 +            if (emittedPersonIds.add(id)) persons += Person(pe
+          +rsonId = id, fullName = fullName)                             
+      120          }
+      121  
+      122 +        for ((login, id) in personByGHLogin) {                
+      123 +            val realName = ghLoginsToNames[login] ?: gitFullNa
+          +meByLogin[login]                                              
+      124 +            emitPerson(id, realName)                          
+      125 +            personUsernames += PersonUsername(                
+      126 +                personId = id,                                
+      127 +                domain = "github.com",                        
+      128 +                username = login,                             
+      129 +                realName = realName,                          
+      130 +            )                                                 
+      131 +        }                                                     
+      132 +        for ((email, id) in personByEmail) {                  
+      133 +            emitPerson(id, null) // fullName already supplied 
+          +by the github.com loop above                                  
+      134 +            personUsernames += PersonUsername(                
+      135 +                personId = id,                                
+      136 +                domain = "email",                             
+      137 +                username = email,                             
+      138 +                realName = gitNameByEmail[email],             
+      139 +            )                                                 
+      140 +        }                                                     
+      141 +                                                              
+      142          val rows = Rows(
+      143              projects = listOf(
+      144                  Project(
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2 2>&1 | tail -20)
+  ⎿  15:52:07.875 WARN  d.c.loader.CommonMapper - Dropping RelatedProposal(
+     1507, related, 0752): right side not in our proposal set
+     15:52:07.875 WARN  d.c.loader.CommonMapper - Dropping RelatedProposal(
+     … +40 lines (ctrl+o to expand)
+● The numbers look suspicious — let me check what the user changed in
+  KepMapper.kt.
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(ls
+      C:/Users/kajus/IdeaProjects/cse3000-monorepo/rq3-kep-keep/data/normalized/
+       | findstr kep)
+  ⎿  kep-commits.jsonl
+     kep-issue-comments.jsonl
+     kep-issue-timeline.jsonl
+     … +16 lines (ctrl+o to expand)
+
+● The user added more KEP streams (kep-issues.jsonl, kep-issue-comments.jsonl,
+  kep-pr-issuecomments.jsonl) since my first run — that's why comment count grew
+   naturally, not a bug. The end-to-end run succeeds with:
+
+  - KEP persons: 877 → 1942 (proposal authors + comment authors + commit-derived
+   authors)
+  - KEP PersonUsernames: now 4124 including email-domain rows (was effectively
+  just GH-login rows)
+  - KEEP counts unchanged (3684 comments — same as before extraction)
+
+● Summary
+
+  CommonMapper.kt
+  - Added a top-level CommitEnrichment data class (moved out of KeepMapper).
+  - Added three companion functions, each parameterized by stream names +
+  mutable state the caller owns:
+    - populateUserEmails — fills personByEmail from a *-users.jsonl stream for
+  logins already known.
+    - populateCommitterAuthorEmails — walks one or more *-commits.jsonl streams,
+   links emails+names to logins, returns CommitEnrichment(gitNameByEmail, 
+  gitFullNameByLogin). Calls the caller's resolveGHLogin lambda so commit-only
+  logins become new persons.
+    - ghLoginsToNames — reads *-users.jsonl for the self-declared GitHub display
+   name per known login.
+  - Added a private COMMIT_ROLES = listOf("author", "committer") since this is
+  GitHub-universal.
+
+  KeepMapper.kt
+  - Deleted the local CommitEnrichment nested class and all three methods (now
+  delegating to CommonMapper).
+  - Removed the now-unused COMMIT_STREAMS constant; the stream list is passed
+  inline at the call site.
+
+  KepMapper.kt
+  - Added personByEmail mutable map.
+  - Calls all three CommonMapper methods with kep-users / kep-commits +
+  kep-pr-commits streams.
+  - Replaced the bare Person(fullName=null) emit loop with the same merged loop
+  as KEEP: GH-login persons get fullName = ghLoginsToNames[login] ?: 
+  gitFullNameByLogin[login]; email-anchored persons emit an extra
+  PersonUsername(domain="email", realName=gitNameByEmail[email]) against the
+  same id.
+
+✻ Worked for 5m 49s
+
+❯ do the same for orgs+affiliations                                             
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now extract this to CommonMapper and replace the local call in KeepMapper.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\CommonMapper.kt)
+  ⎿  Added 90 lines
+      372                  val name = userJson.getJsonString("name")
+      373                  login to name
+      374              }
+      375 +                                                              
+      376 +    /**                                                       
+      377 +     * Builds the [Organisation] and [Affiliation] rows from t
+          +wo sources:                                                   
+      378 +     *                                                        
+      379 +     * 1. **GitHub org membership** — `<userOrgsStream>.jsonl`
+          + (one row per user with their                                 
+      380 +     *    org list) joined against `<orgsStream>.jsonl` (full 
+          +per-org details).                                             
+      381 +     * 2. **`user.company` free-text field** — from `<usersStr
+          +eam>.jsonl`. Stripped of leading                              
+      382 +     *    `@` (people often write `@JetBrains`) and deduped ag
+          +ainst (1) by case-insensitive                                 
+      383 +     *    canonical name.                                     
+      384 +     *                                                        
+      385 +     * Orgs are deduped by canonical name (lowercased, trimmed
+          +, leading `@` stripped) so                                    
+      386 +     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains` a
+          +ll end up as separate rows                                    
+      387 +     * ONLY if they differ after that normalisation. (They oft
+          +en will — string matching is                                  
+      388 +     * intentionally conservative; downstream RQ3 dedup can ru
+          +n a fuzzier merge if desired.)                                
+      389 +     *                                                        
+      390 +     * Mapping business email domains to organisations is also
+          + possible but intentionally                                   
+      391 +     * left to downstream RQs since the emails are available t
+          +here anyway.                                                  
+      392 +     *                                                        
+      393 +     * Affiliations are deduped on the composite PK `(organisa
+          +tion_id, person_id)`.                                         
+      394 +     *                                                        
+      395 +     * Should run after [personByGHLogin] is fully populated —
+          + users / userOrgs are                                         
+      396 +     * filtered to logins already in the set, so this never wi
+          +dens the person set.                                          
+      397 +     */                                                       
+      398 +    fun mapOrgsAndAffiliations(                               
+      399 +        normalizedDir: Path,                                  
+      400 +        orgsStream: String,                                   
+      401 +        usersStream: String,                                  
+      402 +        userOrgsStream: String,                               
+      403 +        personByGHLogin: Map<String, Long>,                   
+      404 +        organisationIds: IdAllocator,                         
+      405 +    ): Pair<List<Organisation>, List<Affiliation>> {          
+      406 +        val orgsByLogin: Map<String, JsonObject> = readJsonlOb
+          +jects(normalizedDir, orgsStream)                              
+      407 +            .keepLatestScrapesBy { it.getJsonString("login") }
+      408 +            .associateBy { it.getJsonString("login") }        
+      409 +                                                              
+      410 +        val users = readJsonlObjects(normalizedDir, usersStrea
+          +m)                                                            
+      411 +            .keepLatestScrapesBy { it.getJsonString("login") }
+      412 +            .filter { it.getJsonString("login") in personByGHL
+          +ogin.keys }                                                   
+      413 +            .toList()                                         
+      414 +                                                              
+      415 +        val userOrgs = readJsonlObjects(normalizedDir, userOrg
+          +sStream)                                                      
+      416 +            .keepLatestScrapesBy { it.getJsonString("_login") 
+          +}                                                             
+      417 +            .filter { it.getJsonString("_login") in personByGH
+          +Login.keys }                                                  
+      418 +            .toList()                                         
+      419 +                                                              
+      420 +        val orgIdByCanonName = mutableMapOf<String, Long>()   
+      421 +        val organisations = mutableListOf<Organisation>()     
+      422 +                                                              
+      423 +        fun ensureOrg(rawName: String): Long? {               
+      424 +            val display = rawName.trim().removePrefix("@").tri
+          +m()                                                           
+      425 +            if (display.isEmpty()) return null                
+      426 +            val canon = display.lowercase()                   
+      427 +            return orgIdByCanonName.getOrPut(canon) {         
+      428 +                val id = organisationIds.nextId()             
+      429 +                organisations += Organisation(organisationId =
+          + id, organisationName = display)                              
+      430 +                id                                            
+      431 +            }                                                 
+      432 +        }                                                     
+      433 +                                                              
+      434 +        val affiliationKeys = mutableSetOf<Pair<Long, Long>>()
+      435 +        val affiliations = mutableListOf<Affiliation>()       
+      436 +        fun addAffiliation(orgId: Long?, personId: Long) {    
+      437 +            if (orgId == null) return                         
+      438 +            if (affiliationKeys.add(orgId to personId)) {     
+      439 +                affiliations += Affiliation(organisationId = o
+          +rgId, personId = personId)                                    
+      440 +            }                                                 
+      441 +        }                                                     
+      442 +                                                              
+      443 +        // Source 1: explicit GitHub memberships.             
+      444 +        for (row in userOrgs) {                               
+      445 +            val personId = personByGHLogin.getValue(row.getJso
+          +nString("_login"))                                            
+      446 +            val orgsArray = row["orgs"] as? JsonArray ?: conti
+          +nue                                                           
+      447 +            for (ref in orgsArray) {                          
+      448 +                val orgLogin = (ref as? JsonObject)?.getJsonSt
+          +ringOrNull("login") ?: continue                               
+      449 +                // Prefer the org's display `name` (from /orgs
+          +/{org}); fall back to the login.                              
+      450 +                val orgJson = orgsByLogin[orgLogin]           
+      451 +                val name = orgJson?.getJsonStringOrNull("name"
+          +)?.takeIf { it.isNotBlank() } ?: orgLogin                     
+      452 +                addAffiliation(ensureOrg(name), personId)     
+      453 +            }                                                 
+      454 +        }                                                     
+      455 +                                                              
+      456 +        // Source 2: company free-text.                       
+      457 +        for (user in users) {                                 
+      458 +            val personId = personByGHLogin.getValue(user.getJs
+          +onString("login"))                                            
+      459 +            user.getJsonStringOrNull("company")?.takeIf { it.i
+          +sNotBlank() }?.let { company ->                               
+      460 +                addAffiliation(ensureOrg(company), personId)  
+      461 +            }                                                 
+      462 +        }                                                     
+      463 +        return organisations to affiliations                  
+      464 +    }                                                         
+      465  }
+
+● Now delete the local copy in KeepMapper and switch the call site.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Added 8 lines, removed 1 line
+      148              updatedPersonIdMap.size, resolutionConflicts,
+      149          )
+      150  
+      151 -        val (organisations, affiliations) = mapOrgsAndAffiliat
+          -ions()                                                        
+      151 +        val (organisations, affiliations) = CommonMapper.mapOr
+          +gsAndAffiliations(                                            
+      152 +            normalizedDir = normalizedDir,                    
+      153 +            orgsStream = "keep-orgs",                         
+      154 +            usersStream = "keep-users",                       
+      155 +            userOrgsStream = "keep-user-orgs",                
+      156 +            personByGHLogin = personByGHLogin,                
+      157 +            organisationIds = organisationIds,                
+      158 +        )                                                     
+      159  
+      160          val persons = mutableListOf<Person>()
+      161          val personUsernames = mutableListOf<PersonUsername>()
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KeepMapper.kt)
+  ⎿  Removed 87 lines
+      674          return rawStatus to null
+      675      }
+      676  
+      677 -    /**                                                       
+      678 -     * Builds the [Organisation] and [Affiliation] rows from t
+          -hree sources:                                                 
+      679 -     *                                                        
+      680 -     * 1. **GitHub org membership** — `keep-user-orgs.jsonl` (
+          -one row per user with their                                   
+      681 -     *    org list) joined against `keep-orgs.jsonl` (full per
+          --org details).                                                
+      682 -     * 2. **`user.company` free-text field** — from `keep-user
+          -s.jsonl`. Stripped of leading                                 
+      683 -     *    `@` (people often write `@JetBrains`) and deduped ag
+          -ainst (1) by                                                  
+      684 -     *    case-insensitive canonical name.                    
+      685 -     *                                                        
+      686 -     * Orgs are deduped by canonical name (lowercased, trimmed
+          -, leading `@` stripped) so                                    
+      687 -     * `@JetBrains`, `JetBrains`, the GitHub org `JetBrains`  
+      688 -     * all end up as separate rows ONLY if they differ after t
+          -hat                                                           
+      689 -     * normalisation. (They often will — string matching is in
+          -tentionally conservative;                                     
+      690 -     * downstream RQ3 dedup can run a fuzzier merge if desired
+          -.)                                                            
+      691 -     *                                                        
+      692 -     * Mapping business email domains to organisations is also
+          - possible                                                     
+      693 -     * but is intentionally left to downstream RQs since the e
+          -mails are                                                     
+      694 -     * available there anyway.                                
+      695 -     *                                                        
+      696 -     * Affiliations are deduped on the composite PK `(organisa
+          -tion_id, person_id)`.                                         
+      697 -     *                                                        
+      698 -     * Should run after [personByGHLogin] is fully populated. 
+      699 -     */                                                       
+      700 -    private fun mapOrgsAndAffiliations(): Pair<List<Organisati
+          -on>, List<Affiliation>> {                                     
+      701 -        val orgsByLogin: Map<String, JsonObject> = readJsonlOb
+          -jects(normalizedDir, "keep-orgs")                             
+      702 -            .keepLatestScrapesBy { it.getJsonString("login") }
+      703 -            .associateBy { it.getJsonString("login") }        
+      704 -                                                              
+      705 -        val users = readJsonlObjects(normalizedDir, "keep-user
+          -s")                                                           
+      706 -            .keepLatestScrapesBy { it.getJsonString("login") }
+      707 -            .filter { it.getJsonString("login") in personByGHL
+          -ogin.keys }                                                   
+      708 -            .toList()                                         
+      709 -                                                              
+      710 -        val userOrgs = readJsonlObjects(normalizedDir, "keep-u
+          -ser-orgs")                                                    
+      711 -            .keepLatestScrapesBy { it.getJsonString("_login") 
+          -}                                                             
+      712 -            .filter { it.getJsonString("_login") in personByGH
+          -Login.keys }                                                  
+      713 -            .toList()                                         
+      714 -                                                              
+      715 -        val orgIdByCanonName = mutableMapOf<String, Long>()   
+      716 -        val organisations = mutableListOf<Organisation>()     
+      717 -                                                              
+      718 -        fun ensureOrg(rawName: String): Long? {               
+      719 -            val display = rawName.trim().removePrefix("@").tri
+          -m()                                                           
+      720 -            if (display.isEmpty()) return null                
+      721 -            val canon = display.lowercase()                   
+      722 -            return orgIdByCanonName.getOrPut(canon) {         
+      723 -                val id = organisationIds.nextId()             
+      724 -                organisations += Organisation(organisationId =
+          - id, organisationName = display)                              
+      725 -                id                                            
+      726 -            }                                                 
+      727 -        }                                                     
+      728 -                                                              
+      729 -        val affiliationKeys = mutableSetOf<Pair<Long, Long>>()
+      730 -        val affiliations = mutableListOf<Affiliation>()       
+      731 -        fun addAffiliation(orgId: Long?, personId: Long) {    
+      732 -            if (orgId == null) return                         
+      733 -            if (affiliationKeys.add(orgId to personId)) {     
+      734 -                affiliations += Affiliation(organisationId = o
+          -rgId, personId = personId)                                    
+      735 -            }                                                 
+      736 -        }                                                     
+      737 -                                                              
+      738 -        // Source 1: explicit GitHub memberships.             
+      739 -        for (row in userOrgs) {                               
+      740 -            val login = row.getJsonString("_login")           
+      741 -            val personId = resolveGHLogin(login)              
+      742 -            val orgsArray = row["orgs"] as? JsonArray ?: conti
+          -nue                                                           
+      743 -            for (ref in orgsArray) {                          
+      744 -                val orgLogin = (ref as? JsonObject)?.getJsonSt
+          -ringOrNull("login") ?: continue                               
+      745 -                // Prefer the org's display `name` (from /orgs
+          -/{org}); fall back to the login.                              
+      746 -                val orgJson = orgsByLogin[orgLogin]           
+      747 -                val name = orgJson?.getJsonStringOrNull("name"
+          -)?.takeIf { it.isNotBlank() } ?: orgLogin                     
+      748 -                addAffiliation(ensureOrg(name), personId)     
+      749 -            }                                                 
+      750 -        }                                                     
+      751 -                                                              
+      752 -        // Source 2: company free-text.                       
+      753 -        for (user in users) {                                 
+      754 -            val login = user.getJsonString("login")           
+      755 -            val personId = resolveGHLogin(login)              
+      756 -                                                              
+      757 -            user.getJsonStringOrNull("company")?.takeIf { it.i
+          -sNotBlank() }?.let { company ->                               
+      758 -                addAffiliation(ensureOrg(company), personId)  
+      759 -            }                                                 
+      760 -        }                                                     
+      761 -        return organisations to affiliations                  
+      762 -    }                                                         
+      763 -                                                              
+      677      private fun mapComments(
+      678          proposalIntIds: Set<Int>,
+      679          discussionToProposalsMap: Map<Int, Set<String>>,
+
+● Now wire it into KepMapper.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 1 line, removed 1 line
+      33      private val projectId: Int,
+      34      private val normalizedDir: Path,
+      35      private val personIds: IdAllocator,
+      36 -    @Suppress("unused") private val organisationIds: IdAllocato
+         -r,                                                             
+      36 +    private val organisationIds: IdAllocator,                  
+      37      private val commentIds: IdAllocator,
+      38  ) {
+      39      private val personByGHLogin = mutableMapOf<String, Long>()
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 9 lines
+      107              personByGHLogin = personByGHLogin,
+      108          )
+      109  
+      110 +        val (organisations, affiliations) = CommonMapper.mapOr
+          +gsAndAffiliations(                                            
+      111 +            normalizedDir = normalizedDir,                    
+      112 +            orgsStream = "kep-orgs",                          
+      113 +            usersStream = "kep-users",                        
+      114 +            userOrgsStream = "kep-user-orgs",                 
+      115 +            personByGHLogin = personByGHLogin,                
+      116 +            organisationIds = organisationIds,                
+      117 +        )                                                     
+      118 +                                                              
+      119          val persons = mutableListOf<Person>()
+      120          val personUsernames = mutableListOf<PersonUsername>()
+      121          val emittedPersonIds = mutableSetOf<Long>()
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)  ⎿  Added 5 lines, removed 2 lines
+      153              ),
+      154              persons = persons,
+      155              personUsernames = personUsernames,
+      156 +            organisations = organisations,                    
+      157 +            affiliations = affiliations,                      
+      158              proposals = proposals,
+      159              proposalRevisions = proposalGroups.flatMap { it.re
+           visions },
+      160              proposalRevisionAuthors = proposalGroups.flatMap {
+            it.authorRevisions },
+     ...
+      165  
+      166          log.info(
+      167              "KEP resolver counts: proposals={}, revisions={}, 
+           related={}, dangling-related-dropped={}, " +
+      166 -                    "persons={} (GH logins={}, emails={}), com
+          -ments={}",                                                    
+      168 +                    "persons={} (GH logins={}, emails={}), org
+          +anisations={}, affiliations={}, comments={}",                 
+      169              rows.proposals.size, rows.proposalRevisions.size, 
+           rows.relatedProposals.size, danglingRelatedCount,
+      168 -            rows.persons.size, personByGHLogin.size, personByE
+          -mail.size, rows.comments.size,                                
+      170 +            rows.persons.size, personByGHLogin.size, personByE
+          +mail.size,                                                    
+      171 +            rows.organisations.size, rows.affiliations.size, r
+          +ows.comments.size,                                            
+      172          )
+      173          log.info(
+      174              "KEP status mapping: rawStatus -> normalizedStatus
+            distinct pairs = {}",
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2 2>&1 | tail -10)
+  ⎿  18:32:27.333 INFO  d.c.loader.KepMapper - KEP PR→proposal title match:
+      1941 PRs mentioned a KEP number; 0 resolved to a known single proposa
+     l; 0 resolved to multiple proposals (ignoring).
+     … +15 lines (ctrl+o to expand)
+
+● Something is off — KEP suddenly produces 0 proposals. Let me investigate.
+
+  Listed 2 directories (ctrl+o to expand)
+
+● The KEP revision streams were renamed (kep-yaml-revisions →
+  kep-revisions-yaml, similar for readme). mapProposals is reading non-existent
+  files. Let me fix it.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\KepMapper.kt)
+  ⎿  Added 2 lines, removed 2 lines
+      179      }
+      180  
+      181      private fun mapProposals(): List<ProposalGroup> {
+      182 -        val yamlByKey = readJsonlObjects(normalizedDir, "kep-y
+          -aml-revisions")                                               
+      182 +        val yamlByKey = readJsonlObjects(normalizedDir, "kep-r
+          +evisions-yaml")                                               
+      183              .keepLatestScrapesBy { it.getJsonString("path") + 
+           ":" + it.getJsonString("commit_sha") }
+      184              .toList()
+      185 -        val readmeByKey = readJsonlObjects(normalizedDir, "kep
+          --readme-revisions")                                           
+      185 +        val readmeByKey = readJsonlObjects(normalizedDir, "kep
+          +-revisions-readme")                                           
+      186              .keepLatestScrapesBy { it.getJsonString("path") + 
+           ":" + it.getJsonString("commit_sha") }
+      187              .toList()
+      188  
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2 2>&1 | tail -8)
+  ⎿  18:33:35.923 INFO  d.c.loader.KepMapper - KEP resolver counts: proposa
+     ls=617, revisions=5485, related=244, dangling-related-dropped=17, pers
+     ons=1945 (GH logins=1945, emails=1602), organisations=1932, affiliatio
+     … +16 lines (ctrl+o to expand)
+
+● KEP now emits:
+  - 1932 organisations + 3841 affiliations (was 0 / 0)
+  - Totals across both projects: Organisation=2406, Affiliation=4417
+
+● Summary
+
+  CommonMapper.kt — added mapOrgsAndAffiliations companion-static, parameterized
+   by stream names (<orgs|users|user-orgs>Stream), the read-only personByGHLogin
+   map, and the org IdAllocator. Returns Pair<List<Organisation>, 
+  List<Affiliation>>. Same two-source logic (GitHub org membership via _login +
+  user.company free-text), same canonical-name dedupe (@ strip + lowercase),
+  same (orgId, personId) affiliation key. Replaced the resolveGHLogin callback
+  with a direct personByGHLogin.getValue(...) since both sources are
+  pre-filtered to known logins anyway.
+
+  KeepMapper.kt — deleted the local mapOrgsAndAffiliations and switched the call
+   site to CommonMapper.mapOrgsAndAffiliations(...) with the keep-* streams.
+
+  KepMapper.kt — dropped @Suppress("unused") from organisationIds, called
+  CommonMapper.mapOrgsAndAffiliations with kep-orgs / kep-users / kep-user-orgs,
+   and added organisations + affiliations to the emitted Rows. Also fixed the
+  proposal-revision stream names (kep-yaml-revisions → kep-revisions-yaml,
+  similar for readme) that had been renamed in the scraper output.
+
+✻ Baked for 3m 34s
+
+❯ modify :loader:run task to accept an argument "exportTypes" with possible     
+  values "db", "sql", or "db,sql" (comma separated list of db and sql). The sql 
+   type should behave as it does now: export a data.sql file with insert        
+  statements, apply.sh/apply.bat files and schema-copy.sql. The db type should  
+  export a data.db file instead which creates a fresh db from the schema.sql    
+  and populates it with the data. If both options are picked, both are          
+  exported. Default option should be just "db".                                 
+
+  Searched for 3 patterns, read 5 files, listed 1 directory (ctrl+o to expand)
+
+● First, forward exportTypes from Gradle into the JVM as a system property.
+
+● Update(loader\build.gradle.kts)
+  ⎿  Added 1 line
+       7  dependencies {
+       8      implementation(projects.scraper)
+       9      implementation(libs.kaml)
+      10 +    implementation(libs.sqliteJdbc)                            
+      11      testImplementation(kotlin("test"))
+      12  }
+      13  
+
+● Update(loader\build.gradle.kts)
+  ⎿  Added 1 line, removed 1 line
+      18  // Forward selected -P<name>=<value> properties to the JVM as s
+          ystem properties so Main.kt can read them.
+      19  tasks.named<JavaExec>("run").configure {
+      20      enableAssertions = true   // make `assert(...)` calls also 
+          work in non-debug mode.
+      21 -    listOf("keepProjectId", "kepProjectId", "dataDir", "out", "
+         -schemaPath", "monorepoRoot").forEach { name ->                 
+      21 +    listOf("keepProjectId", "kepProjectId", "dataDir", "out", "
+         +schemaPath", "monorepoRoot", "exportTypes").forEach { name ->  
+      22          project.findProperty(name)?.let { systemProperty(name, 
+          it.toString()) }
+      23      }
+      24  }
+● Now create a DbWriter that produces data.db directly via JDBC.
+
+● Write(loader\src\main\kotlin\dev\cse3000\loader\DbWriter.kt)
+  ⎿  Wrote 214 lines to
+     loader\src\main\kotlin\dev\cse3000\loader\DbWriter.kt
+       1 package dev.cse3000.loader
+       2 
+       3 import java.nio.file.Files
+       4 import java.nio.file.Path
+       5 import java.sql.Connection
+       6 import java.sql.DriverManager
+       7 import java.sql.PreparedStatement
+       8 import java.sql.Types
+       9 
+      10 /**
+     … +244 lines (ctrl+o to expand)
+
+● Now wire export-type dispatch into Main.kt.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\Main.kt)
+  ⎿  Added 31 lines, removed 3 lines
+      48  
+      49      val merged = keepRows + kepRows
+      50  
+      51 -    SqlWriter(outDir).write(merged, schemaSource = schemaSource
+         -)                                                              
+      51 +    val exportTypes = parseExportTypes(System.getProperty("expo
+         +rtTypes"))                                                     
+      52 +    log.info("Export types: {}", exportTypes.joinToString(","))
+      53  
+      54 +    if (ExportType.SQL in exportTypes) {                       
+      55 +        SqlWriter(outDir).write(merged, schemaSource = schemaSo
+         +urce)                                                          
+      56 +        log.info("Apply data.sql with: bash {}/apply.sh /path/t
+         +o/proposals.db", outDir)                                       
+      57 +    }                                                          
+      58 +    if (ExportType.DB in exportTypes) {                        
+      59 +        DbWriter(outDir).write(merged, schemaSource = schemaSou
+         +rce)                                                           
+      60 +        log.info("Wrote populated SQLite db at {}/data.db", out
+         +Dir)                                                           
+      61 +    }                                                          
+      62 +                                                               
+      63      log.info(
+      54 -        "Wrote {} (Project={} Person={} PersonUsername={} Organ
+         -isation={} Affiliation={} " +                                  
+      64 +        "Loaded into {} (Project={} Person={} PersonUsername={}
+         + Organisation={} Affiliation={} " +                            
+      65                  "Proposal={} ProposalRevision={} ProposalRevisi
+          onAuthor={} StageHistory={} RelatedProposal={} Comment={})",
+      66          outDir,
+      67          merged.projects.size,
+     ...
+       76          merged.relatedProposals.size,
+       77          merged.comments.size,
+       78      )
+       69 -    log.info("Apply with: bash {}/apply.sh /path/to/proposals.
+          -db", outDir)                                                  
+       79  }
+       80  
+       81 +private enum class ExportType { DB, SQL }                     
+       82 +                                                              
+       83 +/**                                                           
+       84 + * Parses the `-PexportTypes=<csv>` argument into the set of e
+          +xport targets.                                                
+       85 + * Accepts `db`, `sql`, or any comma-separated mix (e.g. `db,s
+          +ql`, `sql,db`).                                               
+       86 + * Defaults to just `db` when the property is unset or blank. 
+          +Unknown tokens                                                
+       87 + * fail fast.                                                 
+       88 + */                                                           
+       89 +private fun parseExportTypes(raw: String?): Set<ExportType> { 
+       90 +    val csv = raw?.trim()?.takeIf { it.isNotEmpty() } ?: "db" 
+       91 +    return csv.split(',').map { it.trim().lowercase() }.filter
+          + { it.isNotEmpty() }.map { token ->                           
+       92 +        when (token) {                                        
+       93 +            "db" -> ExportType.DB                             
+       94 +            "sql" -> ExportType.SQL                           
+       95 +            else -> error("Unknown -PexportTypes token '$token
+          +'; supported: db, sql, db,sql")                               
+       96 +        }                                                     
+       97 +    }.toSet()                                                 
+       98 +}                                                             
+       99 +                                                              
+      100  private fun sysIntProp(name: String): Int? = System.getPropert
+           y(name)?.toIntOrNull()
+
+● Bash(ls C:/Users/kajus/IdeaProjects/cse3000-monorepo/rq3-kep-keep/build/export
+      /keep-kep/ 2>&1; ls C:/Users/kajus/IdeaProjects/cse3000-monorepo/ |
+      findstr schema)
+  ⎿  apply.bat
+     apply.sh*
+     data.sql
+     … +2 lines (ctrl+o to expand)
+
+● Bash(rm -rf C:/Users/kajus/IdeaProjects/cse3000-monorepo/rq3-kep-keep/build/ex
+      port/keep-kep && ./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2
+      -PmonorepoRoo…)
+  ⎿  Denied by auto mode classifier ∙ see 
+     https://code.claude.com/docs/s/claude-code-auto-mode
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2
+      -PmonorepoRoot=C:/Users/kajus/IdeaProjects/cse3000-monorepo 2>&1 | tail
+      -15)
+  ⎿  FAILURE: Build failed with an exception.
+
+     * What went wrong:
+     … +14 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2
+      -PmonorepoRoot=C:/Users/kajus/IdeaProjects/cse3000-monorepo 2>&1 | grep -E
+       "(Exception|Error|MISSING|sc…)
+  ⎿  > Task :loader:checkKotlinGradlePluginConfigurationErrors SKIPPED
+     > Task :scraper:checkKotlinGradlePluginConfigurationErrors SKIPPED
+     Exception in thread "main" org.sqlite.SQLiteException: [SQLITE_ERROR]
+     … +4 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+  Searched for 2 patterns, read 1 file, listed 1 directory (ctrl+o to expand)
+
+● Running my new DbWriter against schema.sql exposed three pre-existing
+  schema/SQL-writer issues that latently broke the SQL path too (since
+  SqlWriter's INSERTs never ran against the schema until now). I'll fix them
+  surgically.
+
+● Update(~\IdeaProjects\cse3000-monorepo\schema.sql)
+  ⎿  Denied by auto mode classifier ∙ see 
+     https://code.claude.com/docs/s/claude-code-auto-mode
+
+● I need to stop and ask you to make a decision. My new DbWriter is the first
+  thing that actually executes schema.sql against the data being inserted, and
+  it surfaces pre-existing bugs that were silently broken before:
+
+  In C:\Users\kajus\IdeaProjects\cse3000-monorepo\schema.sql (outside this 
+  project — needs your green light to edit):
+  1. Proposal table declares FOREIGN KEY (proposer_id) REFERENCES 
+  Person(person_id), but there's no proposer_id column — this is a hard SQL
+  error.
+  2. PersonUsername has no real_name column, but both SqlWriter and the data
+  model insert into it.
+  3. RelatedProposal is missing a comma between CHECK (type IN ('related', 
+  'supersedes')) and PRIMARY KEY (...).
+
+  In SqlWriter.kt/DbWriter.kt (mine to fix):
+  4. SqlWriter writes status_index and normalized_status; the schema uses
+  stage_index and normalised_status.
+
+  Until (1) and (3) are corrected, no fresh DB can be created from this schema.
+  Until (2) is corrected, every PersonUsername insert fails. None of this was
+  caught earlier because nobody actually piped data.sql through apply.sh against
+   the schema — :loader:run only generated text files.
+
+  Which would you like:
+
+● User answered Claude's questions:
+  ⎿  · How should I resolve the schema.sql issues? → I'll fix schema.sql myself
+
+● I'll align the SQL column names in SqlWriter and DbWriter with the schema
+  (stage_index, normalised_status) and then re-run once you've patched the
+  schema.
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\SqlWriter.kt)
+  ⎿  Added 1 line, removed 1 line
+      162          appendLine("-- StageHistory (${items.size})")
+      163          for (it in items) {
+      164              appendLine(
+      165 -                "INSERT INTO StageHistory(project_id, proposal
+          -_id, status_index, normalized_status, raw_status, created_at) 
+          -" +                                                           
+      165 +                "INSERT INTO StageHistory(project_id, proposal
+          +_id, stage_index, normalised_status, raw_status, created_at) "
+          + +                                                            
+      166                          "VALUES (${e(it.projectId)}, ${e(it.pr
+           oposalId)}, ${e(it.stageIndex)}, " +
+      167                          "${e(it.normalizedStatus)}, ${e(it.raw
+           Status)}, ${e(it.createdAt)});",
+      168              )
+
+● Update(loader\src\main\kotlin\dev\cse3000\loader\DbWriter.kt)
+  ⎿  Added 1 line, removed 1 line
+      152  
+      153      private fun insertStageHistory(conn: Connection, items: Li
+           st<StageHistory>) =
+      154          batch(conn,
+      155 -            "INSERT INTO StageHistory(project_id, proposal_id,
+          - status_index, normalized_status, raw_status, created_at) " + 
+      155 +            "INSERT INTO StageHistory(project_id, proposal_id,
+          + stage_index, normalised_status, raw_status, created_at) " +  
+      156                      "VALUES (?, ?, ?, ?, ?, ?)",
+      157              items,
+      158          ) { ps, it ->
+
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2
+      -PmonorepoRoot=C:/Users/kajus/IdeaProjects/cse3000-monorepo 2>&1 | grep -E
+       "(Exception|SQLITE|BUILD|FAI…)
+  ⎿  15:13:33.236 INFO  dev.cse3000.loader.Main - Export types: DB
+     Exception in thread "main" org.sqlite.SQLiteException: [SQLITE_ERROR]
+     SQL error or missing database (unknown column "proposer_id" in foreign
+     … +5 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● schema.sql hasn't been patched yet. Let me at least verify the SQL-only path
+  works while waiting.
+● Bash(./gradlew :loader:run -PkeepProjectId=1 -PkepProjectId=2
+      -PexportTypes=sql
+      -PmonorepoRoot=C:/Users/kajus/IdeaProjects/cse3000-monorepo 2>&1 | grep -E
+       "(BUILD|Ex…)
+  ⎿  15:14:00.845 INFO  dev.cse3000.loader.Main - Export types: SQL
+     15:14:02.245 INFO  dev.cse3000.loader.Main - Apply data.sql with: bash
+      build\export\keep-kep/apply.sh /path/to/proposals.db
+     … +5 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● The SQL-only path works end-to-end (exportTypes=sql → data.sql + apply.sh/.bat
+   + schema-copy.sql). The DB path is wired but blocked on the three schema
+  fixes you're applying. Ping me when schema.sql is patched and I'll re-run with
+   the default (db) and the combined (db,sql) modes to confirm.
+
+  Quick reference for what I changed:
+  - loader/build.gradle.kts:8 — added implementation(libs.sqliteJdbc); forwards
+  -PexportTypes to JVM.
+  - loader/src/main/kotlin/.../Main.kt — parses -PexportTypes (default db,
+  accepts db/sql/db,sql); dispatches to SqlWriter and/or DbWriter.
+  - loader/src/main/kotlin/.../DbWriter.kt — new; opens fresh data.db, runs
+  schema.sql, bulk-inserts via prepared-statement batches in a single
+  transaction with PRAGMA foreign_keys=OFF.
+  - loader/src/main/kotlin/.../SqlWriter.kt and DbWriter.kt — aligned
+  StageHistory columns with schema (status_index → stage_index,
+  normalized_status → normalised_status).
+
+✻ Cogitated for 6m 55s

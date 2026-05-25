@@ -1,0 +1,64 @@
+# Version catalog is a central place for you to declare and version dependencies
+# https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
+# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
+
+[versions]
+kotlin = "2.3.21"
+kotlinxDatetime = "0.8.0"
+kotlinxSerializationJSON = "1.11.0"
+kotlinxCoroutines = "1.11.0"
+ktor = "3.5.0"
+kaml = "0.104.0"
+slf4j = "2.0.18"
+logback = "1.5.32"
+jgit = "7.6.0.202603022253-r"
+sqliteJdbc = "3.53.1.0"
+dataframe = "1.0.0-Beta5"
+kandy = "0.8.4"
+junit = "6.1.0"
+assertj = "3.27.7"
+
+[libraries]
+kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
+kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+
+ktorClientCore         = { module = "io.ktor:ktor-client-core",                version.ref = "ktor" }
+ktorClientCio          = { module = "io.ktor:ktor-client-cio",                 version.ref = "ktor" }
+ktorClientContentNeg   = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktorClientLogging      = { module = "io.ktor:ktor-client-logging",             version.ref = "ktor" }
+ktorClientAuth         = { module = "io.ktor:ktor-client-auth",                version.ref = "ktor" }
+ktorSerializationJson  = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+
+slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+sqliteJdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
+
+dataframe = { module = "org.jetbrains.kotlinx:dataframe", version.ref = "dataframe" }
+kandyLetsPlot = { module = "org.jetbrains.kotlinx:kandy-lets-plot", version.ref = "kandy" }
+
+junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher" }
+assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+kotlinxCoroutinesTest = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+
+# Libraries can be bundled together for easier import
+[bundles]
+kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
+ktorClient = [
+    "ktorClientCore",
+    "ktorClientCio",
+    "ktorClientContentNeg",
+    "ktorClientLogging",
+    "ktorClientAuth",
+    "ktorSerializationJson",
+]
+testing = ["junitJupiter", "assertjCore", "kotlinxCoroutinesTest"]
+
+[plugins]
+kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
