@@ -11,3 +11,6 @@
 dataSources.xml
 # Kotlin Notebook configuration files
 kotlinNotebook.xml
+# Other
+db-forest-config.xml
+pyLspTools.xml
