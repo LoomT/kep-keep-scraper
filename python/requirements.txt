@@ -1,0 +1,10 @@
+pandas==3.0.3
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.0
+tslearn==0.8.1
+matplotlib==3.10.9
+seaborn==0.13.2
+python-dateutil==2.9.0.post0
+pyarrow
+pysbd==0.3.4

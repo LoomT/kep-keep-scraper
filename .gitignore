@@ -52,3 +52,7 @@ data/
 
 ### Other ###
 analysis/notebooks/exploration.ipynb
+
+### Derived analysis artifacts ###
+python/notebooks/cache/
+python/notebooks/plots/
