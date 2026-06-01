@@ -14,7 +14,7 @@ class RevisionGroupingTest {
     lateinit var tempDir: Path
 
     @Test
-    fun `readGroupedByHeadPath dedups by head_path plus sha and sorts by committed_at`() {
+    fun `readGroupedByHeadPath dedups by head_path plus sha`() {
         writeJsonl(
             "revs",
             row(headPath = "p/a.md", sha = "1", committedAt = "2026-01-02", payload = "v2-newer"),
@@ -33,9 +33,6 @@ class RevisionGroupingTest {
 
         val aRows = grouped.getValue("p/a.md")
         assertThat(aRows).hasSize(2)
-        assertThat(aRows.map { (it["commit_sha"] as JsonPrimitive).content })
-            .describedAs("rows in each group are sorted by committed_at")
-            .containsExactly("0", "1")
 
         // The duplicate (head_path=p/a.md, sha=1) collapsed to the latest scrape — the
         // newer payload survives.
@@ -101,6 +98,26 @@ class RevisionGroupingTest {
     @Test
     fun `missing stream returns an empty map`() {
         assertThat(RevisionGrouping.readGroupedByHeadPath(tempDir, "does-not-exist")).isEmpty()
+    }
+
+    @Test
+    fun `readGroupedByHeadPath reverses the upstream commit order`() {
+        writeJsonl(
+            "revs",
+            row(headPath = "a.md", sha = "0", committedAt = "2026-01-04"),
+            row(headPath = "a.md", sha = "2", committedAt = "2026-01-03"),
+            row(headPath = "a.md", sha = "3", committedAt = "2026-01-03"),
+            row(headPath = "a.md", sha = "1", committedAt = "2026-01-02"),
+        )
+
+        val grouped = RevisionGrouping.readGroupedByHeadPath(tempDir, "revs")
+        assertThat(grouped.keys).containsExactly("a.md")
+
+        val aRows = grouped.getValue("a.md")
+        assertThat(aRows).hasSize(4)
+        assertThat(aRows.map { (it["commit_sha"] as JsonPrimitive).content })
+            .describedAs("commit rows are reversed (upstream is in reverse chronological order)")
+            .containsExactly("1", "3", "2", "0")
     }
 
     private fun writeJsonl(stream: String, vararg rows: String) {

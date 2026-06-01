@@ -28,7 +28,8 @@ internal object RevisionGrouping {
     ): Map<String, List<JsonObject>> =
         readJsonlObjects(normalizedDir, stream)
             .keepLatestScrapesBy { it.getJsonString("path") to it.getJsonString("commit_sha") }
-            .sortedBy { it.getJsonString("committed_at") }
+            .toList()
+            .reversed() // upstream scraped data is in reverse chronological order
             .groupBy { key(it) }
 
     fun headPathOf(obj: JsonObject): String = obj.getJsonString("head_path")
