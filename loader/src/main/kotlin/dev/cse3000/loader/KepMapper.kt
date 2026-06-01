@@ -516,7 +516,7 @@ class KepMapper(
      * few one-offs (`alpha`, `removed`, `superseded`).
      *
      * Logs a WARN with `MISSING_STATUS_MAPPING:` on any token that isn't recognized so they're
-     * easy to grep out of the run output and add cases for.
+     * easy to find in output and add cases for.
      *
      * TODO: when new statuses appear in the WARN log, decide which bucket they belong in and extend this match.
      */
@@ -536,16 +536,15 @@ class KepMapper(
 
             // Rejected / superseded.
             k.startsWith("rejected") -> "rejected"
-            k.startsWith("replaced") -> "rejected"
 
             // Withdrawn / deferred / removed.
             k.startsWith("withdrawn") -> "withdrawn"
-            k.startsWith("deferred") -> "withdrawn"
             k.startsWith("removed") -> "withdrawn"
 
             // Review: implementable + in-flight alpha/beta.
             k.startsWith("implementable") || k.startsWith("implementeable") || k.startsWith("implementables") -> "review"
             k == "alpha" || k == "beta" -> "review"
+            k.startsWith("deferred") -> "review"
 
             // Draft: provisional / proposed.
             k.startsWith("provisional") -> "draft"
@@ -553,6 +552,7 @@ class KepMapper(
             k == "draft" || k.startsWith("draft ") -> "draft"
 
             // Superseded: explicitly superseded by a newer proposal.
+            k.startsWith("replaced") -> "superseded"
             k.startsWith("superseded") -> "superseded"
 
             else -> {

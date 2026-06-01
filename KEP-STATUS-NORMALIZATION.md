@@ -9,10 +9,9 @@
 | starts with `implemented`                          | accepted                                     |
 | starts with `imlpemented` (typo)                   | accepted                                     |
 | starts with `rejected`                             | rejected                                     |
-| starts with `replaced`                             | rejected                                     |
 | starts with `withdrawn`                            | withdrawn                                    |
-| starts with `deferred`                             | withdrawn                                    |
 | starts with `removed`                              | withdrawn                                    |
+| starts with `deferred`                             | review                                       |
 | starts with `implementable`                        | review                                       |
 | starts with `implementeable` (typo)                | review                                       |
 | starts with `implementables`                       | review                                       |
@@ -21,5 +20,6 @@
 | starts with `provisional`                          | draft                                        |
 | starts with `proposed`                             | draft                                        |
 | `draft` or starts with `draft `                    | draft                                        |
+| starts with `replaced`                             | superseded                                   |
 | starts with `superseded`                           | superseded                                   |
 | _anything else_                                    | unknown (logged as `MISSING_STATUS_MAPPING`) |

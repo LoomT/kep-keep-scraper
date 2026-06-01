@@ -624,13 +624,11 @@ class KeepMapper(
      * CHECK enum values: `accepted`, `rejected`, `draft`, `review`, `withdrawn`, `superseded`, `unknown`.
      *
      * Logs a WARN with `MISSING_STATUS_MAPPING:` on any token that isn't recognized so they're
-     * easy to grep out of the run output and add cases for.
+     * easy to find in output and add cases for.
      *
      * TODO: when new statuses appear in the WARN log, decide which bucket they belong in and extend this match.
      */
     private fun normalizeStatus(token: String, proposalId: String): String {
-        // Strip surrounding punctuation / markdown bold markers / backticks; some KEEPs write
-        // `* **Status**: ** In progress` (extra leading **) or wrap the whole status in **bold**.
         val k = token.lowercase()
             .trim()
             .trim('.', ',', ';', ':', '*', '`', ' ', '"', '\'')
