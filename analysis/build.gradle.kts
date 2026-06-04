@@ -28,6 +28,20 @@ tasks.named<JavaExec>("run").configure {
     }
 }
 
+tasks.register<JavaExec>("combineProposals") {
+    group = "analysis"
+    description = "Validate every sqlite db under data/shared/ (proposals.db + other_proposals/*) " +
+            "against schema.sql and merge the valid ones into data/shared/all_proposals.db. " +
+            "Skips files whose schema does not match (logged at ERROR)."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.cse3000.analysis.CombineProposalsKt")
+    workingDir = rootProject.projectDir
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    listOf("sharedDir", "schemaPath", "monorepoRoot").forEach { name ->
+        project.findProperty(name)?.let { systemProperty(name, it.toString()) }
+    }
+}
+
 tasks.register("syncSharedDb") {
     group = "analysis"
     description = "Copy the shared proposals.db from -PsharedDbPath into data/shared/."
