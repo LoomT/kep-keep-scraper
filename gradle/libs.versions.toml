@@ -17,6 +17,7 @@ dataframe = "1.0.0-Beta5"
 kandy = "0.8.4"
 junit = "6.1.0"
 assertj = "3.27.7"
+commons = "1.14.1"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -32,6 +33,7 @@ ktorClientAuth         = { module = "io.ktor:ktor-client-auth",                v
 ktorSerializationJson  = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
 kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+commons-csv = { module = "org.apache.commons:commons-csv", version.ref = "commons" }
 
 slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }

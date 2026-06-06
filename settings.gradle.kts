@@ -13,10 +13,11 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
+rootProject.name = "CSE3000_RQ3-KEEP-KEP"
+
 include(":scraper")
 include(":keep")
 include(":kep")
 include(":loader")
 include(":analysis")
-
-rootProject.name = "CSE3000_RQ3-KEEP-KEP"
+include("code-complexity")
