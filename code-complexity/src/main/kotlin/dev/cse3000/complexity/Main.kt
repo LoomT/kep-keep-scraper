@@ -5,7 +5,7 @@ import dev.cse3000.complexity.analyzer.runScc
 import dev.cse3000.complexity.config.ProjectConfig
 import dev.cse3000.complexity.config.quarterlySnapshots
 import dev.cse3000.complexity.db.ComplexityDb
-import dev.cse3000.complexity.git.addWorktree
+import dev.cse3000.complexity.git.addWorktreeSparse
 import dev.cse3000.complexity.git.removeWorktree
 import dev.cse3000.complexity.git.resolveSnapshots
 import dev.cse3000.gh.git.RepoMirror
@@ -77,7 +77,7 @@ private fun processProject(
             val wtPath = worktreeDir.resolve("${config.owner}_${config.repo}_${snap.commitSha.take(8)}")
 
             try {
-                addWorktree(mirror.gitDir, snap.commitSha, wtPath)
+                addWorktreeSparse(mirror.gitDir, snap.commitSha, wtPath, config.subfolder)
 
                 val analysisPath = if (config.subfolder != null) wtPath.resolve(config.subfolder) else wtPath
                 if (!analysisPath.exists()) {

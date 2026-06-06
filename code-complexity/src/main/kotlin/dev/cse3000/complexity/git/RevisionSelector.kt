@@ -54,14 +54,39 @@ fun resolveSnapshots(repo: Repository, dates: List<LocalDate>): List<SnapshotInf
     }
 }
 
-fun addWorktree(bareRepo: Path, sha: String, target: Path) {
+/**
+ * git worktree add with sparse checkout if [subfolder] is not null
+ *
+ * `core.protectNTFS=false` is set since some old CPython revisions had a weird file name `"Remove .pyc files..."` :/
+ */
+fun addWorktreeSparse(bareRepo: Path, sha: String, target: Path, subfolder: String?) {
     Files.createDirectories(target.parent)
+
+    if (subfolder == null) {
+        runGit(
+            bareRepo,
+            "-c", "core.protectNTFS=false",
+            "-c", "core.longpaths=true",
+            "worktree", "add", "--detach", target.absolutePathString(), sha
+        )
+        return
+    }
+
+    // 1. Create worktree without checking files out
     runGit(
         bareRepo,
-        "-c", "core.protectNTFS=false", // old CPython revision has weird file name "Remove .pyc files..." :/
+        "-c", "core.protectNTFS=false",
         "-c", "core.longpaths=true",
-        "worktree", "add", "--detach", target.absolutePathString(), sha
+        "worktree", "add", "--no-checkout", "--detach", target.absolutePathString(), sha
     )
+
+    // 2. Configure sparse-checkout in the new worktree (run from inside it)
+    //    --cone is faster and well-suited for "just this directory"
+    runGit(target, "sparse-checkout", "init", "--cone")
+    runGit(target, "sparse-checkout", "set", subfolder)
+
+    // 3. Now actually populate the working tree
+    runGit(target, "checkout")
 }
 
 fun removeWorktree(bareRepo: Path, target: Path) {
