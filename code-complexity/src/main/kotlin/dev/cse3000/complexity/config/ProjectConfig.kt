@@ -44,11 +44,11 @@ data class ProjectConfig(
 }
 
 /**
- * Generates quarterly snapshot dates from [referenceDate] backwards, including one
- * quarter before the proposal-start date (i.e. [monthsAgo] months before [referenceDate]).
+ * Generates semiannual snapshot dates from [referenceDate] backwards, including one
+ * half-year before the proposal-start date (i.e. [monthsAgo] months before [referenceDate]).
  * Dates are returned newest-first.
  */
-fun quarterlySnapshots(
+fun semiAnnualSnapshots(
     referenceDate: LocalDate = ProjectConfig.REFERENCE_DATE,
     monthsAgo: Int,
 ): List<LocalDate> {
@@ -57,7 +57,7 @@ fun quarterlySnapshots(
     var current = referenceDate
     while (current > proposalStart) {
         dates.add(current)
-        current = current.minusMonths(3)
+        current = current.minusMonths(6)
     }
     // Include one snapshot just before proposals started
     dates.add(current)

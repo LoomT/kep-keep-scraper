@@ -3,7 +3,7 @@ package dev.cse3000.complexity
 import dev.cse3000.complexity.analyzer.runLizard
 import dev.cse3000.complexity.analyzer.runScc
 import dev.cse3000.complexity.config.ProjectConfig
-import dev.cse3000.complexity.config.quarterlySnapshots
+import dev.cse3000.complexity.config.semiAnnualSnapshots
 import dev.cse3000.complexity.db.ComplexityDb
 import dev.cse3000.complexity.git.addWorktreeSparse
 import dev.cse3000.complexity.git.removeWorktree
@@ -54,9 +54,9 @@ private fun processProject(
 
     db.upsertProject(config)
 
-    val snapshotDates = quarterlySnapshots(monthsAgo = config.monthsAgo)
+    val snapshotDates = semiAnnualSnapshots(monthsAgo = config.monthsAgo)
     log.info(
-        "{}: {} quarterly snapshots ({} -> {})",
+        "{}: {} semiannual snapshots ({} -> {})",
         config.ownerRepo,
         snapshotDates.size,
         snapshotDates.last(),

@@ -24,7 +24,7 @@ data class SnapshotInfo(
 /**
  * Walks the commit history once and matches each quarterly [dates] to the latest
  * commit whose commit-time is on or before that date. [dates] must be sorted
- * newest-first (the output of [dev.cse3000.complexity.config.quarterlySnapshots]).
+ * newest-first (the output of [dev.cse3000.complexity.config.semiAnnualSnapshots]).
  */
 fun resolveSnapshots(repo: Repository, dates: List<LocalDate>): List<SnapshotInfo> {
     val head = repo.resolve("HEAD") ?: return emptyList()
@@ -35,6 +35,7 @@ fun resolveSnapshots(repo: Repository, dates: List<LocalDate>): List<SnapshotInf
 
     RevWalk(repo).use { rw ->
         rw.sort(RevSort.COMMIT_TIME_DESC)
+        rw.isFirstParent = true
         rw.markStart(rw.parseCommit(head))
         for (commit in rw) {
             if (dateIdx >= instants.size) break
