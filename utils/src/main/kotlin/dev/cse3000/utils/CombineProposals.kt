@@ -1,4 +1,4 @@
-package dev.cse3000.analysis
+package dev.cse3000.utils
 
 import org.intellij.lang.annotations.Language
 import org.slf4j.LoggerFactory
@@ -10,7 +10,7 @@ import java.sql.DriverManager
 import java.sql.SQLException
 import kotlin.io.path.*
 
-private val log = LoggerFactory.getLogger("dev.cse3000.analysis.CombineProposalsKt")
+private val log = LoggerFactory.getLogger("dev.cse3000.utils.CombineProposalsKt")
 
 private const val CUTOFF = "2026-01-01T00:00:00Z"
 
@@ -88,8 +88,8 @@ private fun resolveSchemaPath(): Path {
 
 private fun collectInputs(sharedDir: Path): List<Path> {
     val list = mutableListOf<Path>()
-    val main = sharedDir.resolve("proposals.db")
-    if (Files.exists(main)) list.add(main) else log.warn("Main proposals.db missing at {}", main)
+    val main = sharedDir.resolve("data.db")
+    if (Files.exists(main)) list.add(main) else log.warn("Main data.db missing at {}", main)
 
     val otherDir = sharedDir.resolve("other_proposals")
     if (Files.isDirectory(otherDir)) {

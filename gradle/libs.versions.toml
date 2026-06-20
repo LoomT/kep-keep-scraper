@@ -13,8 +13,6 @@ slf4j = "2.0.18"
 logback = "1.5.32"
 jgit = "7.6.0.202603022253-r"
 sqliteJdbc = "3.53.1.0"
-dataframe = "1.0.0-Beta5"
-kandy = "0.8.4"
 junit = "6.1.0"
 assertj = "3.27.7"
 commons = "1.14.1"
@@ -40,9 +38,6 @@ logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 sqliteJdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
-
-dataframe = { module = "org.jetbrains.kotlinx:dataframe", version.ref = "dataframe" }
-kandyLetsPlot = { module = "org.jetbrains.kotlinx:kandy-lets-plot", version.ref = "kandy" }
 
 junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher" }
