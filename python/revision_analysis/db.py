@@ -48,6 +48,72 @@ def project_names(con: sqlite3.Connection) -> dict[int, str]:
     }
 
 
+def terminal_cutoffs(
+        con: sqlite3.Connection, project_id: int | None = None
+) -> pd.DataFrame:
+    """Per proposal, the timestamp from which it is considered *terminal*.
+
+    A revision is "terminal" if it was made once the proposal had permanently
+    reached a terminal status (accepted / rejected / withdrawn / superseded) and
+    "in-progress" otherwise. A proposal can bounce review -> accepted -> review,
+    so we do not trust the latest status alone: the cutoff is the start of the
+    *trailing run* of statuses that are all terminal, i.e., the timestamp of the
+    first status after the last non-terminal one. Concretely:
+
+    * no non-terminal status ever  -> cutoff = first status (terminal from birth)
+    * the last status is non-terminal -> NaT (never permanently terminal; every
+      revision is in-progress)
+    * otherwise -> the created_at of the status right after the last
+      non-terminal one
+
+    A revision at time ``r`` is then terminal iff ``r >= cutoff`` (NaT cutoff =>
+    always in-progress). Proposals with no status rows are absent.
+    """
+    where = "" if project_id is None else "WHERE project_id = :pid"
+    sql = f"""
+        WITH flagged AS (
+            SELECT project_id, proposal_id, created_at AS raw_t,
+                   CASE WHEN normalised_status IN ('accepted', 'rejected', 'withdrawn', 'superseded')
+                        THEN 1 ELSE 0 END AS is_terminal,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY project_id, proposal_id
+                       ORDER BY datetime(created_at), status_index
+                   ) AS rn
+            FROM ProposalStatus {where}
+        ),
+        last_nt AS (
+            SELECT project_id, proposal_id, MAX(rn) AS rn
+            FROM flagged WHERE is_terminal = 0
+            GROUP BY project_id, proposal_id
+        ),
+        bounds AS (
+            SELECT project_id, proposal_id, MAX(rn) AS max_rn
+            FROM flagged GROUP BY project_id, proposal_id
+        )
+        SELECT b.project_id, b.proposal_id,
+               CASE
+                   WHEN ln.rn IS NULL THEN (
+                       SELECT f.raw_t FROM flagged f
+                       WHERE f.project_id = b.project_id
+                         AND f.proposal_id = b.proposal_id AND f.rn = 1)
+                   WHEN ln.rn = b.max_rn THEN NULL
+                   ELSE (
+                       SELECT f.raw_t FROM flagged f
+                       WHERE f.project_id = b.project_id
+                         AND f.proposal_id = b.proposal_id AND f.rn = ln.rn + 1)
+               END AS terminal_cutoff
+        FROM bounds b
+        LEFT JOIN last_nt ln USING (project_id, proposal_id)
+    """
+    df = pd.read_sql_query(
+        sql, con, params={"pid": project_id} if project_id is not None else {}
+    )
+    df["terminal_cutoff"] = pd.to_datetime(
+        df["terminal_cutoff"], errors="coerce", utc=True
+    )
+    return df
+
+
 @dataclass(frozen=True)
 class Revision:
     project_id: int
