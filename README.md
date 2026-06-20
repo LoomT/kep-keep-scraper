@@ -1,17 +1,19 @@
 # CSE3000_RQ3-KEEP-KEP
 
 This project includes a GitHub Miner for [KEEP](https://github.com/Kotlin/KEEP)s
-and [KEP](https://github.com/kubernetes/enhancements)s, and an analyser of Software Enhancement Proposal evolution.
+and [KEP](https://github.com/kubernetes/enhancements)s, and an analyzer of Software Enhancement Proposal evolution.
 
 ## Modules
 
-| Module      | Purpose                                                                                                                                             |
-|-------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `:scraper`  | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                                                                   |
-| `:keep`     | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk and corresponding commits from GH scraping.                         |
-| `:kep`      | KEP-specific scraper (`kubernetes/enhancements`). Includes the proposal kep.yaml + README revision walk and corresponding commits from GH scraping. |
-| `:loader`   | Maps the KEEPs and KEPs to the common SQL schema and exports `data.sql/data.db`.                                                                    |
-| `:analysis` | Analysis module (TBD).                                                                                                                              |
+| Module             | Purpose                                                                                                                                             |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `:scraper`         | Shared scraping utils + a generic scraper CLI that works against any GitHub repo.                                                                   |
+| `:keep`            | KEEP-specific scraper (`Kotlin/KEEP`). Includes the proposal-text revision walk and corresponding commits from GH scraping.                         |
+| `:kep`             | KEP-specific scraper (`kubernetes/enhancements`). Includes the proposal kep.yaml + README revision walk and corresponding commits from GH scraping. |
+| `:loader`          | Maps the KEEPs and KEPs to the common SQL schema and exports `data.sql/data.db`.                                                                    |
+| `:code-complexity` | Clones the codebases behind each proposal set and measures code complexity (scc + lizard) over time into `complexity.db`.                           |
+| `:utils`           | Combines the per-contributor proposal databases into a single `all_proposals.db` (`combineProposals` task).                                         |
+| `:python`          | Python subproject holding the analysis library (`revision_analysis`) and the Jupyter notebooks that produce the research-paper figures.             |
 
 ## Prerequisites
 
@@ -19,6 +21,7 @@ and [KEP](https://github.com/kubernetes/enhancements)s, and an analyser of Softw
 2. A GitHub Personal Access Token in the `GITHUB_TOKEN` environment variable for scraping GitHub.
     - `repo:public_repo` scope is sufficient (both KEEP and KEP repos are public).
     - Authenticated requests get the 5000 req/hr REST quota and 5000 points/hr GraphQL quota.
+3. Python 3.14 for analysis notebooks in the `:python` subproject.
 
 ```powershell
 # Windows PowerShell
@@ -33,19 +36,19 @@ export GITHUB_TOKEN=ghp_...
 ## Monorepo layout (git subtrees)
 
 The monorepo root holds the shared
-`schema.sql` (and optionally `proposals.db`) plus one folder per contributor — including this repo as `rq3-keep-kep/`.
+`schema.sql` (and optionally `proposals.db`) plus one folder per contributor — including this repo as `rq3-kep-keep/`.
 With subtrees, every contributor's files live directly in the monorepo's own commit history (no nested `.git`, no
 `.gitmodules`), so a plain `git clone <monorepo-url>`
 fetches everything in one shot. The Gradle convention plugin sets
-`-DmonorepoRoot=<parent dir>` for every `:run` task, so the loader and
-`:analysis` discover `../schema.sql` / `../proposals.db` automatically.
+`-DmonorepoRoot=<parent dir>` for every JavaExec task, so the loader and
+`:utils:combineProposals` discover `../schema.sql` automatically.
 
 ### Open this project from a monorepo clone
 
 ```sh
 # 1. Clone the monorepo.
 git clone <monorepo-url> proposals-monorepo
-cd cse3000-sep/rq3-keep-kep
+cd proposals-monorepo/rq3-kep-keep
 
 # 2. Open this folder in IntelliJ (NOT the monorepo root). IntelliJ detects
 #    settings.gradle.kts here and treats this as the project root, so sibling
@@ -55,20 +58,19 @@ cd cse3000-sep/rq3-keep-kep
 idea .   # or open the folder via File ▸ Open in IntelliJ
 
 # 3. Run any Gradle command exactly as in standalone mode. The loader picks
-#    ../schema.sql automatically; :analysis picks ../proposals.db automatically.
+#    ../schema.sql automatically.
 ./gradlew :loader:run -PkepProjectId=8 -PkeepProjectId=9
-./gradlew :analysis:run
 ```
 
 Override knobs (any `:run` task):
 
-- `-PschemaPath=path/to/schema.sql` — explicit schema location for the loader.
-- `-PsharedDbPath=path/to/proposals.db` — explicit shared-DB location for `:analysis`.
+- `-PschemaPath=path/to/schema.sql` — explicit schema location for the loader and `:utils:combineProposals`.
+- `-PsharedDir=path/to/shared` — explicit `data/shared/` location for `:utils:combineProposals`.
 - `-PmonorepoRoot=path/to/monorepo` — override the auto-detected monorepo root.
 
 ## Running the scrapers
 
-All commands run from inside `rq3-keep-kep/`.
+All commands run from inside `rq3-kep-keep/`.
 
 ### KEEP and KEP (the named scrapers)
 
@@ -142,8 +144,7 @@ positional. The generic scraper additionally requires `--repo=`.
 
 ### Where the data goes
 
-All Gradle `:run` tasks (KEEP, KEP, the generic scraper, the loader, and `:analysis`) are pinned to **`<repo-root>` as
-their JVM working directory**
+All Gradle `:run` tasks are pinned to **`<repo-root>` as their JVM working directory**
 via the convention plugin. That means every relative `data/` reference resolves
 to a single shared `<repo-root>/data/` (gitignored), so:
 
@@ -152,8 +153,6 @@ to a single shared `<repo-root>/data/` (gitignored), so:
 - `:scraper:run --repo=foo/bar` still gets its own subdir at
   `<root>/data/foo/bar/...` (per-repo isolation, derived from `--repo`).
 - `:loader:run` reads `<root>/data/normalized/*.jsonl` — no copy step needed.
-- `:analysis:syncSharedDb` writes to `<root>/data/shared/proposals.db`; `:analysis:run`
-  reads from there.
 
 The cache (`data/cache/`) is keyed by URL (raw cache + ETags) and by qualified
 keys like `keep.issues.updated_at` / `kep.issues.updated_at` (sync cursor) /
@@ -307,7 +306,7 @@ bash build/export/keep-kep/apply.sh ../proposals.db
 `:loader:run` writes:
 
 ```
-build/export/keep-kep/
+<repo-root>/build/export/keep-kep/
   schema-copy.sql   # snapshot of schema.sql (sanity check vs the live .db)
   data.sql          # all INSERTs in FK-dependency order, single transaction
   apply.sh          # bash apply.sh path/to/proposals.db
@@ -316,24 +315,7 @@ build/export/keep-kep/
 ```
 
 `person_id` / `organisation_id` / `comment_id` values are allocated locally in the half-open range
-`[project_id × 1_000_000, +1_000_000)` so they can't
-collide with other contributors' allocations. Person dedup across projects is deferred to `:analysis` post-processing,
-e.g., the same GitHub user appearing in two
-contributors' data will be two separate `Person` rows after both pushes.
-
-### Analysis in `:analysis`
-
-```sh
-# Copy the .db into the local data.
-./gradlew :analysis:syncSharedDb -PsharedDbPath=../proposals.db
-./gradlew :analysis:run    # opens data/shared/proposals.db
-```
-
-`syncSharedDb` copies the .db into `data/shared/proposals.db` (gitignored).
-`:analysis:run` opens it via `sqlite-jdbc`. Resolution priority for the shared DB:
-`-PsharedDbPath` (explicit) > `<repo-root>/data/shared/proposals.db` (the synced snapshot).
-
-[//]: # (TODO expand after analysis is done)
+`[project_id × 1_000_000, +1_000_000)` so they can't collide with other contributors' allocations.
 
 ### Schema is `schema.sql`
 
@@ -341,6 +323,74 @@ The collaborative database schema lives in `schema.sql` at the monorepo root. Th
 `SchemaModel.kt` data classes mirror it; if the schema changes, update both
 together. The loader's per-stream → SQL mapping (`KeepMapper.kt` / `KepMapper.kt`)
 contains the logic for mapping raw data from `data/normalized/*.jsonl` to the common SQL schema.
+
+## Analysis
+
+This sections documents how the proposal sets were combined, complexities of codebases analyzed and analysis for the
+research paper done.
+
+`utils` subproject contains the utility for combining proposal data from different proposal sets.
+
+Subproject `code-complexity` contains the scrapers and analyzers for the codebases corresponding to the proposal sets.
+
+Analysis itself is done using Python notebooks in the `:python` module. It is recommended to create a `.venv` there with
+at least Python 3.14:
+
+```sh
+cd python
+python -m venv .venv
+.venv/Scripts/activate   # Windows; on Unix: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+The notebooks live in `python/notebooks/` and import the `revision_analysis` package (segment → diff → classify pipeline
+over the proposal revisions). Launch Jupyter from the `python/` directory (or open the notebooks in IntelliJ / VS Code
+with the `.venv` selected as the kernel).
+
+### Combining proposal data
+
+After exporting the `data.db` to `<repo-root>/build/export/keep-kep/` as detailed in the previous section, move this
+database file to `<repo-root>/data/shared/data.db`. Place the other database files in
+`<repo-root>/data/shared/other_proposals/` (can be `.db`, `.sqlite` or `.sqlite3`).
+
+Then, run the following command to combine all proposals and produce a single database file in
+`<repo-root>/data/shared/all_proposals.db`:
+
+```sh
+./gradlew :utils:combineProposals
+```
+
+This task will filter out data with timestamps older than 2026-01-01. To change that, modify the `CUTOFF` variable in
+`<repo-root>/utils/src/main/kotlin/dev/cse3000/utils/CombineProposals.kt`.
+
+### Codebase Complexities
+
+The `:code-complexity` module clones the codebase behind each proposal set and measures how its complexity evolves over
+time. Each project is listed in `code-complexity/src/main/resources/repos-config.csv`
+(`owner/repo,project_id,monthsAgo[,subfolder]`); for every project it takes semi-annual snapshots back to the
+proposal-start date, then runs **scc** and **lizard** (see [External Tool Versions Used](#external-tool-versions-used) —
+both must be on `PATH`) on each snapshot. Monorepos are sparse-checked out to the configured `subfolder` only.
+
+```sh
+./gradlew :code-complexity:run
+```
+
+Results are written to `<repo-root>/data/complexity/complexity.db` (bare git mirrors and worktrees go under
+`<repo-root>/data/complexity/`). Rerunning skips snapshots already present in the DB, so it resumes cheaply.
+
+Git should be installed on `PATH` since git worktrees are used and JGit does not support them
+(see [External Tool Versions Used](#external-tool-versions-used)).
+
+### Analysis
+
+Assumes that a single database file with all proposals is in `<repo-root>/data/shared/all_proposals.db` (from
+`:utils:combineProposals`) and the codebase complexity database file in `<repo-root>/data/complexity/complexity.db`
+(from `:code-complexity:run`). With the Python `.venv` set up as described above, run the notebooks in
+`python/notebooks/`:
+
+- `revision-classification.ipynb` — classifies proposal revisions (code / prose / metadata changes) and compares
+  terminal vs. in-progress revisions.
+- `complexity.ipynb` — correlates proposal evolution with the codebase complexity snapshots.
 
 ## Build
 
@@ -350,7 +400,27 @@ contains the logic for mapping raw data from `data/normalized/*.jsonl` to the co
 ./gradlew clean # wipe build outputs
 ```
 
+## Continuous Integration
+
+`.gitlab-ci.yml` defines a two-stage GitLab pipeline (`build` → `test`) scoped to this project (`PROJECT_DIR =
+rq3-kep-keep`). It runs on the `eclipse-temurin:25-jdk` image and is triggered as a child of the monorepo's parent
+pipeline, on merge requests, on the default branch, and on manual (`web`) runs.
+
+- **build** — `./gradlew --no-daemon assemble` (compiles every module's jars without running tests).
+- **test** — `./gradlew --no-daemon test`, publishing per-subproject JUnit reports and HTML test reports as artifacts.
+
+The Gradle user home and build outputs are cached per branch (keyed on `gradle-wrapper.properties` +
+`settings.gradle.kts`) to speed up subsequent runs.
+
 ## Notes
 
 - Multi-module Gradle setup; shared build logic is in `buildSrc/`.
 - Versions are pinned in `gradle/libs.versions.toml`.
+
+## External Tool Versions Used
+
+### Code Complexity Analysis
+
+- scc (https://github.com/boyter/scc) – 3.7.0
+- lizard (https://github.com/terryyin/lizard) – 1.23.0
+- git (https://git-scm.com/) – 2.53.0.windows.1

@@ -14,7 +14,7 @@ fun main() {
     val dataDir = Paths.get(System.getProperty("dataDir") ?: "data")
     val outDir: Path = Paths.get(System.getProperty("out") ?: "build/export/keep-kep")
     // Schema source resolution, in priority order:
-    // 1. -PschemaPath=<path> — explicit override (mirrors -PsharedDbPath in :analysis).
+    // 1. -PschemaPath=<path> — explicit override.
     // 2. -PmonorepoRoot=<path>/schema.sql — by default, it's the parent of rootProject.projectDir.
     val schemaSource = sequenceOf(
         System.getProperty("schemaPath")?.let(Paths::get),
