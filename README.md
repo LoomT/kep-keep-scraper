@@ -3,6 +3,8 @@
 This project includes a GitHub Miner for [KEEP](https://github.com/Kotlin/KEEP)s
 and [KEP](https://github.com/kubernetes/enhancements)s, and an analyzer of Software Enhancement Proposal evolution.
 
+It is part of the TU Delft CSE3000 research project course (2026/Q4).
+
 ## Modules
 
 | Module             | Purpose                                                                                                                                             |
