@@ -21,16 +21,16 @@ class KeepMapperTest {
             revisionRow(
                 headPath = "proposals/KEEP-0001-foo.md",
                 path = "proposals/KEEP-0001-foo.md",
-                sha = "sha-1",
-                committedAt = "2026-01-01T00:00:00Z",
-                content = proposalText("Foo Proposal", "Submitted", author = "Alice Author"),
+                sha = "sha-2",
+                committedAt = "2026-01-02T00:00:00Z",
+                content = proposalText("Foo Proposal", "Stable", author = "Alice Author"),
             ),
             revisionRow(
                 headPath = "proposals/KEEP-0001-foo.md",
                 path = "proposals/KEEP-0001-foo.md",
-                sha = "sha-2",
-                committedAt = "2026-01-02T00:00:00Z",
-                content = proposalText("Foo Proposal", "Stable", author = "Alice Author"),
+                sha = "sha-1",
+                committedAt = "2026-01-01T00:00:00Z",
+                content = proposalText("Foo Proposal", "Submitted", author = "Alice Author"),
             ),
         )
 
