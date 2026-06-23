@@ -43,6 +43,8 @@ fetches everything in one shot. The Gradle convention plugin sets
 `-DmonorepoRoot=<parent dir>` for every JavaExec task, so the loader and
 `:utils:combineProposals` discover `../schema.sql` automatically.
 
+If this project is cloned outside its monorepo, explicitly override `-DmonorepoRoot` to this folder!
+
 ### Open this project from a monorepo clone
 
 ```sh
